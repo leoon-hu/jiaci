@@ -1,0 +1,54 @@
+# 所有单词库都排除的词：月份缩写、无学习价值的缩写与称谓、专名规则漏掉的地名（常用的另见 地名-常用.txt）、词典里的非标准拼写；一行一个
+jan
+feb
+apr
+jun
+jul
+aug
+sept
+oct
+nov
+dec
+hon
+iii
+vii
+non
+mains
+indies
+ma'am
+mm
+soviet
+dr
+christ
+jesus
+mrs
+mr
+ms
+bristol
+birmingham
+athens
+# 专名规则漏掉的（只有大写词头，但释义不止一条短名词义）；常用的地名同时列在 地名-常用.txt，考试本会收
+america
+australia
+russia
+korea
+berlin
+oxford
+cambridge
+moscow
+tokyo
+atlantic
+odyssey
+wollongong
+# 非标准或过时拼写、词典残片
+loth
+inapt
+mathematic
+flourishment
+water-clock
+trans
+cannot
+# 只在固定搭配里出现、或有词频但没有学习价值的变形
+works
+according
+mars

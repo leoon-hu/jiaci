@@ -1,0 +1,21 @@
+# 只有高频系列排除的词：和原形并存、又有自己星级的变形（better / best / left / thought / means / terms），按词频排会挤在最前面；一行一个
+better
+best
+later
+earlier
+left
+thought
+found
+states
+means
+terms
+aids
+greater
+sooner
+proceeding
+mar
+starting
+rising
+viewing
+dealing
+expanding

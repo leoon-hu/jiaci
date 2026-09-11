@@ -1,0 +1,7 @@
+.legal-wrap{max-width:820px;margin:0 auto;padding:28px 16px 60px}
+.legal-top{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:20px}
+.doc{padding:8px 0 32px;line-height:1.75}
+.doc h1{font-size:24px;margin:0 0 16px}
+.doc h2{font-size:17px;margin:24px 0 8px}
+.doc ul{padding-left:20px;margin:0 0 10px}
+.doc code{background:var(--bg);padding:1px 5px;border-radius:4px}

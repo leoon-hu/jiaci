@@ -1,0 +1,572 @@
+// AI加词 数据模型（对应需求文档第 6 节 + 开发计划第 3 节）
+// 所有表、字段均带中文注释；数据库层的注释见 prisma/migrations/*_table_comments
+generator client {
+  provider      = "prisma-client-js"
+  // 本机 macOS 构建、Linux 服务器运行：把服务器的查询引擎一起生成
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// 词库类型：builtin 内置（运营方维护）/ import 用户导入 / custom 用户自建
+enum WordbookType {
+  builtin
+  import
+  custom
+}
+
+/// 词条类型：word 单词 / phrase 短语（含空格）
+enum WordKind {
+  word
+  phrase
+}
+
+/// 用户对单词的学习状态：new 已加入未开始 / learning 学习中 / mastered 已掌握 / removed 已移出学习
+enum ProgressStatus {
+  new
+  learning
+  mastered
+  removed
+}
+
+/// 打分来源：study 学习卡片 / list 单词列表的批量操作；「今日已完成」只算 study
+enum StudySource {
+  study
+  list
+}
+
+/// 学习记录结果：know 认识 / fuzzy 模糊 / master 标记已掌握 / reset 重新记 / remove 移出
+enum StudyResult {
+  know
+  fuzzy
+  master
+  reset
+  remove
+}
+
+/// 发音音频文本类型：word 单词 / sentence 例句 / definition 中文释义（列表点词时跟在单词后朗读）
+enum AudioKind {
+  word
+  sentence
+  definition
+}
+
+/// 发音音频状态：ok 已生成 / failed 合成失败
+enum AudioStatus {
+  ok
+  failed
+}
+
+/// 用户档案表：一个邮箱一个账号，设置以 JSON 保存
+model User {
+  /// 用户 ID（cuid）
+  id              String    @id @default(cuid())
+  /// 登录邮箱（小写，唯一）
+  email           String    @unique
+  /// 用户设置 JSON：每日新词量、复习上限、学习顺序、口音、朗读、主题、列表显示模式等（需求 3.5）
+  settings        Json      @default("{}")
+  /// 注册时间
+  createdAt       DateTime  @default(now()) @map("created_at")
+  /// 注销时间；非空表示已注销，30 天后由清理脚本物理删除
+  deletedAt       DateTime? @map("deleted_at")
+  /// 用户同意的条款版本（对应 system_config 的 legal.version）；为空表示这条记录早于同意机制
+  termsVersion    String?   @map("terms_version")
+  /// 同意时间
+  termsAcceptedAt DateTime? @map("terms_accepted_at")
+
+  sessions  Session[]
+  wordbooks Wordbook[]
+  notes     UserWordNote[]
+  progress  UserWordProgress[]
+  logs      StudyLog[]
+  feedback  WordFeedback[]
+  current   UserCurrentWordbook?
+  bookmarks WordbookBookmark[]
+
+  @@map("user_profile")
+}
+
+/// 邮箱验证码表（需求 A1/A2）：每次发送一条，验证成功或作废后 used_at 置值
+model OtpCode {
+  /// 记录 ID
+  id        String    @id @default(cuid())
+  /// 接收验证码的邮箱（小写）
+  email     String
+  /// 验证码哈希（sha256，含服务端密钥），不存明文
+  codeHash  String    @map("code_hash")
+  /// 过期时间（默认发送后 10 分钟）
+  expiresAt DateTime  @map("expires_at")
+  /// 已尝试错误次数，达到上限后作废
+  attempts  Int       @default(0)
+  /// 使用或作废时间；为空表示仍有效
+  usedAt    DateTime? @map("used_at")
+  /// 发送时间，用于 60 秒重发间隔与每日上限统计
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([email, createdAt])
+  @@map("otp_code")
+}
+
+/// 登录会话表（需求 A3）：会话凭证存于 HttpOnly Cookie，90 天有效，活跃自动续期
+model Session {
+  /// 会话 ID：Cookie 里那串随机值（32 字节）的 SHA-256 十六进制。库里只存哈希，库被拖走也拿不到可用的会话
+  id        String   @id
+  /// 所属用户
+  userId    String   @map("user_id")
+  /// 过期时间
+  expiresAt DateTime @map("expires_at")
+  /// 创建时间
+  createdAt DateTime @default(now()) @map("created_at")
+  /// 最近活跃时间，超过一天再次访问时续期
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("session")
+}
+
+/// 词库表：内置词库由运营方直接 INSERT（owner_id 为空），导入 / 自建词库归属用户
+model Wordbook {
+  /// 词库 ID
+  id        String                @id @default(cuid())
+  /// 词库名称
+  name      String
+  /// 词库类型：builtin / import / custom
+  type      WordbookType
+  /// 所属用户 ID；内置词库为空
+  ownerId   String?               @map("owner_id")
+  /// 词数（冗余统计，增删单词时维护）
+  wordCount Int                   @default(0) @map("word_count")
+  /// 内置词库的展示顺序（scripts/wordbooks.ts 的 BOOKS 下标）；导入 / 自建词库为 0，按创建时间排
+  sortOrder Int                   @default(0) @map("sort_order")
+  /// 创建时间
+  createdAt DateTime              @default(now()) @map("created_at")
+  owner     User?                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  words     WordbookWord[]
+  current   UserCurrentWordbook[]
+  bookmarks WordbookBookmark[]
+
+  @@index([ownerId])
+  @@index([type])
+  @@map("wordbook")
+}
+
+/// 全局单词表：同一拼写只有一条；词典字段来自 ECDICT，AI 字段按模型厂商分表存放（word_ai_*），所有用户共用（需求 3.4）
+model Word {
+  /// 单词 ID
+  id            String    @id @default(cuid())
+  /// 拼写（小写，唯一；短语以单个空格分隔）
+  spelling      String    @unique
+  /// 词条类型：word 单词 / phrase 短语
+  kind          WordKind  @default(word)
+  /// 音标（IPA，来自词典数据）
+  phonetic      String?
+  /// 中文释义（来自词典数据，多行，每行「词性. 释义」）
+  translation   String?
+  /// 英文释义（来自词典数据，多行）
+  definition    String?
+  /// 柯林斯星级 1–5；空为无
+  collins       Int?
+  /// 是否牛津 3000 核心词
+  oxford        Boolean   @default(false)
+  /// 标签数组：考试 zk 中考 / gk 高考 / cet4 / cet6 / ky 考研 / toefl / ielts / gre，后续可加词表标签
+  tags          String[]  @default([])
+  /// BNC 语料词频排名（越小越常用；空为无数据）
+  bnc           Int?
+  /// 当代语料词频排名（越小越常用；空为无数据）
+  frq           Int?
+  /// 词形变化：p 过去式 / d 过去分词 / i 现在分词 / 3 三单 / r 比较级 / t 最高级 / s 复数 / 0 原形 / 1 变形类型，如 p:took/d:taken
+  exchange      String?
+  /// 显示用词头（保留原大小写，如 Monday、China）；空表示与 spelling 相同
+  display       String?
+  /// 词典字段来源：ecdict / manual；空表示尚无词典数据
+  dictSource    String?   @map("dict_source")
+  /// 词典字段更新时间
+  dictUpdatedAt DateTime? @map("dict_updated_at")
+  /// 首次入库时间
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  wordbooks  WordbookWord[]
+  notes      UserWordNote[]
+  progress   UserWordProgress[]
+  logs       StudyLog[]
+  feedback   WordFeedback[]
+  aiOpenai   WordAiOpenai?
+  aiDeepseek WordAiDeepseek?
+  bookmarks  WordbookBookmark[]
+
+  @@index([kind])
+  @@index([frq])
+  @@index([tags], type: Gin)
+  @@map("word")
+}
+
+/// 词库与单词关联表：一个词库内单词按 sort_order 排序
+model WordbookWord {
+  /// 词库 ID
+  wordbookId String   @map("wordbook_id")
+  /// 单词 ID
+  wordId     String   @map("word_id")
+  /// 在词库中的顺序（从 0 开始）
+  sortOrder  Int      @map("sort_order")
+  wordbook   Wordbook @relation(fields: [wordbookId], references: [id], onDelete: Cascade)
+  word       Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@id([wordbookId, wordId])
+  @@index([wordbookId, sortOrder])
+  @@index([wordId])
+  @@map("wordbook_word")
+}
+
+/// 词库书签（需求 3.3.5）：一个用户在一本词库里只有一个书签，新的覆盖旧的。
+/// 除了停在哪个词，还记下当时的浏览条件（状态筛选、搜索词、排序、显示模式），点书签图标时一并还原。
+model WordbookBookmark {
+  /// 用户 ID
+  userId     String   @map("user_id")
+  /// 词库 ID
+  wordbookId String   @map("wordbook_id")
+  /// 书签停在哪个词
+  wordId     String   @map("word_id")
+  /// 当时的状态筛选：all 全部 / new 未开始 / learning 学习中 / mastered 已掌握 / none 未加入
+  filter     String   @default("all")
+  /// 当时的搜索词；空串表示没有搜索
+  q          String   @default("")
+  /// 当时的排序：order 添加顺序 / alpha 字母 / freq 词频 / due 下次复习时间
+  sort       String   @default("order")
+  /// 当时的列表显示模式：both 英文 + 释义 / en 隐藏释义 / zh 隐藏英文
+  mode       String   @default("both")
+  /// 最近一次设置书签的时间
+  updatedAt  DateTime @updatedAt @map("updated_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wordbook   Wordbook @relation(fields: [wordbookId], references: [id], onDelete: Cascade)
+  word       Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@id([userId, wordbookId])
+  @@index([wordbookId])
+  @@index([wordId])
+  @@map("wordbook_bookmark")
+}
+
+/// OpenAI 填充的词条 AI 字段：每词一行，有行即已填充；字段结构与上限见 src/lib/ai/schema.ts
+model WordAiOpenai {
+  /// 单词 ID
+  wordId       String   @id @map("word_id")
+  /// 美式音标，/ / 包裹
+  phoneticUs   String?  @map("phonetic_us")
+  /// 英式音标
+  phoneticUk   String?  @map("phonetic_uk")
+  /// 一句话核心义（≤ 30 字）
+  core         String?
+  /// 核心义的词性（取 meanings 第一组的 pos，列表行显示用）
+  corePos      String?  @map("core_pos")
+  /// 按词性分组的义项 [{pos, senses: [{zh, en, ex: {en, zh} | null}]}]
+  meanings     Json?
+  /// 分级例句 [{en, zh, level 1–3}]，3–5 条
+  examples     Json?
+  /// 搭配 [{en, zh}]，4–8 条
+  collocations Json?
+  /// 短语与习语 [{en, zh}]，0–6 条
+  phrases      Json?
+  /// 句型 [{en, zh, ex: {en, zh}}]，0–4 条
+  patterns     Json?
+  /// 语域与场景（≤ 150 字）
+  usage        String?
+  /// 近义词辨析 [{w, m}]，0–6 条，m 为一句区别
+  synonyms     Json?
+  /// 反义词 [{w, zh}]，0–5 条
+  antonyms     Json?
+  /// 易混词 [{w, m}]，0–4 条
+  confusables  Json?
+  /// 常见错误 [{wrong, right, note}]，0–4 条
+  mistakes     Json?
+  /// 词族（派生词）[{w, pos, zh}]，0–8 条
+  family       Json?
+  /// 同根词 [{w, pos, zh}]，0–6 条
+  cognates     Json?
+  /// 助记（≤ 120 字）
+  mnemonic     String?
+  /// 词源与构词 {origin, parts: [{part, meaning}]}；构词不透明的词为空
+  etymology    Json?
+  /// 填充时间
+  generatedAt  DateTime @default(now()) @map("generated_at")
+  /// 来源：模型@提示词版本（如 gpt-5@1），运营手改为 manual
+  source       String
+  word         Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  /// 列表搜索按核心义包含匹配（ILIKE '%…%'）。两个索引各管一半：
+  /// (core, word_id) 让任何关键词都能只扫这个几百 KB 的索引（Index Only Scan），不必读 49 MB 的表；
+  /// trigram GIN 让 3 个字符以上的关键词直接定位（中文两字词提不出 trigram，只能靠上面那个）
+  @@index([core, wordId])
+  @@index([core(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("word_ai_openai")
+}
+
+/// DeepSeek 填充的词条 AI 字段：每词一行，有行即已填充；字段结构与上限见 src/lib/ai/schema.ts
+model WordAiDeepseek {
+  /// 单词 ID
+  wordId       String   @id @map("word_id")
+  /// 美式音标，/ / 包裹
+  phoneticUs   String?  @map("phonetic_us")
+  /// 英式音标
+  phoneticUk   String?  @map("phonetic_uk")
+  /// 一句话核心义（≤ 30 字）
+  core         String?
+  /// 核心义的词性（取 meanings 第一组的 pos，列表行显示用）
+  corePos      String?  @map("core_pos")
+  /// 按词性分组的义项 [{pos, senses: [{zh, en, ex: {en, zh} | null}]}]
+  meanings     Json?
+  /// 分级例句 [{en, zh, level 1–3}]，3–5 条
+  examples     Json?
+  /// 搭配 [{en, zh}]，4–8 条
+  collocations Json?
+  /// 短语与习语 [{en, zh}]，0–6 条
+  phrases      Json?
+  /// 句型 [{en, zh, ex: {en, zh}}]，0–4 条
+  patterns     Json?
+  /// 语域与场景（≤ 150 字）
+  usage        String?
+  /// 近义词辨析 [{w, m}]，0–6 条，m 为一句区别
+  synonyms     Json?
+  /// 反义词 [{w, zh}]，0–5 条
+  antonyms     Json?
+  /// 易混词 [{w, m}]，0–4 条
+  confusables  Json?
+  /// 常见错误 [{wrong, right, note}]，0–4 条
+  mistakes     Json?
+  /// 词族（派生词）[{w, pos, zh}]，0–8 条
+  family       Json?
+  /// 同根词 [{w, pos, zh}]，0–6 条
+  cognates     Json?
+  /// 助记（≤ 120 字）
+  mnemonic     String?
+  /// 词源与构词 {origin, parts: [{part, meaning}]}；构词不透明的词为空
+  etymology    Json?
+  /// 填充时间
+  generatedAt  DateTime @default(now()) @map("generated_at")
+  /// 来源：模型@提示词版本（如 gpt-5@1），运营手改为 manual
+  source       String
+  word         Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  /// 列表搜索按核心义包含匹配（ILIKE '%…%'）。两个索引各管一半：
+  /// (core, word_id) 让任何关键词都能只扫这个几百 KB 的索引（Index Only Scan），不必读 49 MB 的表；
+  /// trigram GIN 让 3 个字符以上的关键词直接定位（中文两字词提不出 trigram，只能靠上面那个）
+  @@index([core, wordId])
+  @@index([core(ops: raw("gin_trgm_ops"))], type: Gin)
+  @@map("word_ai_deepseek")
+}
+
+/// 用户对词条的问题反馈：只记录，运营方用 SQL 查看处理
+model WordFeedback {
+  /// 反馈 ID
+  id        String   @id @default(cuid())
+  /// 提交人
+  userId    String   @map("user_id")
+  /// 反馈的单词
+  wordId    String   @map("word_id")
+  /// 反馈内容，最多 500 字
+  content   String   @db.VarChar(500)
+  /// 提交时间
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word      Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@index([wordId])
+  @@index([userId, createdAt])
+  @@map("word_feedback")
+}
+
+/// 用户单词备注表（需求 3.2.5）：每人每词一条，仅本人可见
+model UserWordNote {
+  /// 用户 ID
+  userId    String   @map("user_id")
+  /// 单词 ID
+  wordId    String   @map("word_id")
+  /// 备注内容，最多 200 字
+  note      String   @db.VarChar(200)
+  /// 最近修改时间
+  updatedAt DateTime @updatedAt @map("updated_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word      Word     @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@id([userId, wordId])
+  /// 删词时的级联要按 word_id 找行
+  @@index([wordId])
+  @@map("user_word_note")
+}
+
+/// 用户单词学习进度表（需求 3.2.4，FSRS 调度）：无记录 = 未学过
+model UserWordProgress {
+  /// 用户 ID
+  userId     String         @map("user_id")
+  /// 单词 ID
+  wordId     String         @map("word_id")
+  /// 当前安排的复习间隔（天，FSRS 的 scheduled_days）；0 表示新词
+  interval   Int            @default(0)
+  /// FSRS 记忆稳定性（天）；新词为空
+  stability  Float?
+  /// FSRS 难度 1–10；新词为空
+  difficulty Float?
+  /// 最近一次打分的日期，用于按实际间隔计算
+  lastReview DateTime?      @map("last_review") @db.Date
+  /// 下次复习日期；已掌握 / 已移出为空
+  dueDate    DateTime?      @map("due_date") @db.Date
+  /// 学习次数（累计打分次数）
+  reps       Int            @default(0)
+  /// 遗忘次数（复习时打「模糊」的次数）
+  lapses     Int            @default(0)
+  /// 状态：new 已加入未开始 / learning 学习中 / mastered 已掌握 / removed 已移出
+  status     ProgressStatus @default(new)
+  /// 最近更新时间
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word       Word           @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@id([userId, wordId])
+  @@index([userId, dueDate])
+  @@index([userId, status])
+  /// 删词时的级联要按 word_id 找行，没有前导索引会顺序扫全表
+  @@index([wordId])
+  @@map("user_word_progress")
+}
+
+/// 学习记录表：每次打分或状态操作一条，用于「今日已完成」统计与详情页学习记录时间线
+model StudyLog {
+  /// 记录 ID
+  id           String      @id @default(cuid())
+  /// 用户 ID
+  userId       String      @map("user_id")
+  /// 单词 ID
+  wordId       String      @map("word_id")
+  /// 结果：know 认识 / fuzzy 模糊 / master 已掌握 / reset 重新记 / remove 移出
+  result       StudyResult
+  /// 打分后的下次间隔（天）：0 = 今日再出现，-1 = 不再出现
+  nextInterval Int         @default(0) @map("next_interval")
+  /// 来源：study 学习卡片 / list 单词列表的批量操作
+  source       StudySource @default(study)
+  /// 客户端提交标识，用于离线重试时去重（同一用户内唯一）
+  clientTs     String?     @map("client_ts")
+  /// 打分时间（服务器 UTC 时刻）
+  studiedAt    DateTime    @default(now()) @map("studied_at")
+  /// 学习日期：打分时采用的**客户端本地日期**，今日队列、今日已完成、学习记录时间线都按它算；
+  /// 不能用 studied_at 的 UTC 日期代替——本地日期与 UTC 日期不一致的用户会算错一天
+  studyDate    DateTime    @default(dbgenerated("CURRENT_DATE")) @map("study_date") @db.Date
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  word         Word        @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clientTs])
+  @@index([userId, studiedAt])
+  @@index([userId, studyDate])
+  @@index([userId, wordId, studiedAt])
+  /// 删词时的级联要按 word_id 找行
+  @@index([wordId])
+  @@map("study_log")
+}
+
+/// 用户当前学习词库表：每人同一时间只有一个当前词库
+model UserCurrentWordbook {
+  /// 用户 ID
+  userId     String   @id @map("user_id")
+  /// 当前学习的词库 ID
+  wordbookId String   @map("wordbook_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wordbook   Wordbook @relation(fields: [wordbookId], references: [id], onDelete: Cascade)
+
+  /// 删词库时的级联要按 wordbook_id 找行
+  @@index([wordbookId])
+  @@map("user_current_wordbook")
+}
+
+/// 系统配置表（需求 3.6）：键值对，运营方直接用 SQL 维护，服务端读取带 60 秒缓存
+model SystemConfig {
+  /// 配置键，如 site.name、ai.model、legal.privacy_policy
+  key         String   @id
+  /// 配置值（文本；数字、Markdown 正文均以文本存放）
+  value       String
+  /// 配置说明
+  description String?
+  /// 最近修改时间
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at")
+
+  @@map("system_config")
+}
+
+/// ECDICT 词典原始数据（MIT 协议，github.com/skywind3000/ECDICT），字段与 ecdict.csv 一致；供运营筛选写入 word 表及查词兜底，应用核心流程不依赖
+model DictEntry {
+  /// 词头（保留原大小写，唯一）
+  word        String  @id
+  /// 小写拼写（与 word.spelling 同规则，用于匹配）
+  spelling    String
+  /// 音标（IPA）
+  phonetic    String?
+  /// 英文释义（多行）
+  definition  String?
+  /// 中文释义（多行，每行「词性. 释义」）
+  translation String?
+  /// 词性及占比，如 n:52/v:48
+  pos         String?
+  /// 柯林斯星级 1–5；空为无
+  collins     Int?
+  /// 是否牛津 3000 核心词
+  oxford      Boolean @default(false)
+  /// 考试标签（空格分隔）：zk 中考 / gk 高考 / cet4 四级 / cet6 六级 / ky 考研 / toefl 托福 / ielts 雅思 / gre
+  tag         String?
+  /// BNC 语料词频排名（越小越常用；空为无）
+  bnc         Int?
+  /// 当代语料词频排名（越小越常用；空为无）
+  frq         Int?
+  /// 词形变化：p 过去式 / d 过去分词 / i 现在分词 / 3 三单 / r 比较级 / t 最高级 / s 复数 / 0 原形 / 1 变形类型
+  exchange    String?
+  /// 例句等扩展信息（JSON 文本，多为空）
+  detail      String?
+  /// 发音音频地址（多为空）
+  audio       String?
+
+  @@index([spelling])
+  @@index([frq])
+  @@map("dict_entry")
+}
+
+/// 允许合成发音音频的文本登记表：单词拼写或例句原文。按需合成接口只接受这里登记过的例句，也是批量生成脚本的待办清单
+model AudioText {
+  /// 规范化文本（去首尾空白、合并连续空格）的 SHA-1
+  textHash  String      @id @map("text_hash")
+  /// 类型：word 单词 / sentence 例句 / definition 中文释义
+  kind      AudioKind
+  /// 原文（单词拼写、例句或中文释义）
+  text      String
+  /// 登记时间
+  createdAt DateTime    @default(now()) @map("created_at")
+  clips     AudioClip[]
+
+  @@map("audio_text")
+}
+
+/// 已合成的发音音频记录：每个文本 × 音色一行，文件在 AUDIO_DIR 下（路径可由类型、音色、文本推出，表只记状态与统计）
+model AudioClip {
+  /// 文本哈希，关联 audio_text
+  textHash  String      @map("text_hash")
+  /// 音色名（Edge 如 en-US-AriaNeural，Kokoro 如 af_heart）
+  voice     String
+  /// 合成引擎：edge / kokoro
+  provider  String
+  /// 相对 AUDIO_DIR 的文件路径
+  path      String
+  /// 文件大小（字节）
+  bytes     Int         @default(0)
+  /// 状态：ok 已生成 / failed 合成失败
+  status    AudioStatus @default(ok)
+  /// 失败原因
+  error     String?
+  /// 首次生成时间
+  createdAt DateTime    @default(now()) @map("created_at")
+  /// 最近更新时间
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  text      AudioText   @relation(fields: [textHash], references: [textHash], onDelete: Cascade)
+
+  @@id([textHash, voice])
+  @@index([voice, status])
+  @@map("audio_clip")
+}

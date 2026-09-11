@@ -1,0 +1,170 @@
+# 雅思常见短语：附在「雅思词汇」单词之后。来自参考词表（docs/雅思-词表.txt）里词典有独立词条的短语，去掉英式说法、摄影器材等过于专门的条目，
+# 少量词典没有的常见搭配写在 补充词典.tsv。构建时按牛津 / 柯林斯 / 组成词常用度排序，专名短语自动剔除
+# 连接与表达
+according to
+as for
+as if
+as though
+as to
+at least
+at random
+by definition
+for instance
+for the sake of
+given that
+in accordance with
+in addition
+in addition to
+in any event
+in brief
+in case
+in comparison with
+in favor of
+in order that
+in other words
+in particular
+in reality
+in summary
+in vain
+in view of
+not to mention
+on account of
+on the horizon
+owing to
+spot on
+to be honest
+to begin with
+to tell the truth
+believe it or not
+with a view to
+worse still
+vice versa
+upside down
+and so forth
+# 动词短语
+blow up
+bump into
+hang on
+run out
+snap up
+lose consciousness
+make a reservation
+propose a toast
+have a runny nose
+# 教育
+academic record
+academic year
+associate professor
+compulsory course
+compulsory education
+optional course
+correspondence school
+extracurricular activity
+foreign language
+graduate student
+graduation ceremony
+orientation meeting
+rote learning
+school timetable
+staff room
+students' union
+vocational school
+vocational training
+exam-oriented education
+letter of reference
+registration form
+fact sheet
+# 交通与旅行
+airport terminal
+boarding card
+business class
+economy class
+first-class
+connecting flight
+direct flight
+forced landing
+plane ticket
+round trip
+shuttle bus
+light rail
+public transport
+parking lot
+parking permit
+speed limit
+traffic congestion
+traffic control
+traffic police
+traffic regulation
+road junction
+head-on collision
+hit and run
+flight number
+vacant seat
+travel agency
+tourist guide
+summer resort
+duty-free shop
+id card
+work permit
+# 健康
+hay fever
+scarlet fever
+blood transfusion
+case history
+scuba diving
+hang gliding
+water skiing
+water polo
+track and field
+martial art
+locker room
+# 社会与工作
+night shift
+skilled worker
+full employment
+unemployment benefit
+old-age pension
+trade union
+real estate
+residential area
+legal adviser
+social science
+work contract
+business administration
+industrial accident
+# 科学与环境
+carbon dioxide
+ozone layer
+ultraviolet light
+raw material
+atomic energy
+lunar calendar
+tropical rain forest
+resource depletion
+civil engineering
+mechanical engineering
+chemical engineering
+amino acid
+table salt
+mineral water
+# 饮食与日用
+dining hall
+dining room
+snack bar
+cocktail party
+peanut butter
+orange juice
+lemon juice
+red wine
+white wine
+soy sauce
+oyster sauce
+shrimp sauce
+tomato paste
+broad bean
+banquet hall
+nail polish
+lip gloss
+hand lotion
+eye mask
+kung fu

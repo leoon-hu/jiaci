@@ -1,0 +1,18 @@
+.steps{display:flex;gap:6px;margin-bottom:20px;font-size:13px;color:var(--faint)}
+.steps span{flex:1;padding:8px 0;border-top:3px solid var(--border)}
+.steps span.on{color:var(--primary);border-color:var(--primary);font-weight:600}
+.steps span.done{color:var(--ok);border-color:var(--ok)}
+.drop{border:2px dashed var(--border-strong);border-radius:16px;padding:40px 20px;text-align:center;cursor:pointer;transition:.15s}
+.drop:hover,.drop.over{border-color:var(--primary);background:var(--primary-soft)}
+.drop .icon{font-size:36px}
+.drop b{display:block;margin-top:8px}
+.drop p{color:var(--muted);font-size:13px;margin:6px 0 0}
+.rules{margin:16px 0 0;padding-left:18px;color:var(--muted);font-size:13px;line-height:1.8}
+.sample{margin-top:14px;font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--muted);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;white-space:pre;line-height:1.6}
+.preview-table{width:100%;border-collapse:collapse;font-size:14px}
+.preview-table th,.preview-table td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
+.preview-table th{color:var(--muted);font-weight:600;font-size:12px}
+.preview-table td.skip{color:var(--faint);text-decoration:line-through}
+.preview-table td.n{color:var(--faint);width:40px}
+.file-chip{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;background:var(--card);border:1px solid var(--border);border-radius:10px;font-size:13px}
+.big-progress{height:12px}

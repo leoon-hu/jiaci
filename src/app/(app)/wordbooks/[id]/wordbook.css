@@ -1,0 +1,135 @@
+.head-card{display:flex;gap:14px;align-items:flex-start}
+.head-card .cover{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#4f6df5,#7c5cff);color:#fff;display:grid;place-items:center;font-weight:800;font-size:12px;flex:none;text-align:center;line-height:1.1;padding:2px}
+.head-card h2{margin:0;font-size:20px}
+.section.mt-8{padding-top:8px}
+.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 8px}
+.toolbar .search{flex:1;min-width:160px}
+.toolbar .dd.block{flex:none;min-width:150px}
+.toolbar .seg button{min-height:30px;padding:0 10px;font-size:13px}
+/* 排序方向：箭头朝上 = 正序，朝下 = 倒序；随机排序没有方向，按钮置灰 */
+.toolbar .dir-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:32px;padding:0;
+  border:1px solid var(--border-strong);border-radius:9px;background:var(--card);color:var(--muted);cursor:pointer}
+.toolbar .dir-btn svg{width:16px;height:16px;transition:transform .15s}
+.toolbar .dir-btn.desc svg{transform:rotate(180deg)}
+.toolbar .dir-btn:hover:not(:disabled){color:var(--text);border-color:var(--primary)}
+.toolbar .dir-btn:disabled{opacity:.45;cursor:default}
+.btn-chip .cnt{margin-left:3px;font-size:12px;color:var(--faint)}
+.btn-chip.active .cnt{color:rgba(255,255,255,.8)}
+.list-hint{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--faint);margin:0 0 6px}
+.list-hint .pie{width:12px;height:12px;border-width:1.5px;vertical-align:-2px;margin-right:3px;display:inline-block}
+@media (max-width:767px){.toolbar .dd.block{flex:1}.toolbar .seg{width:100%}.toolbar .seg button{flex:1}}
+.pager{display:flex;justify-content:center;align-items:center;gap:8px;padding:14px;color:var(--muted);font-size:13px}
+.add-inline{display:flex;gap:8px;margin-top:10px}
+/* 紧凑单词行 + 进度饼图 */
+.list.dense .srow{position:relative;overflow:hidden;border-top:1px solid var(--border)}
+.list.dense .srow:first-child{border-top:0}
+.s-content{position:relative;display:flex;align-items:center;gap:10px;padding:7px 12px;min-height:44px;background:var(--card);cursor:pointer;touch-action:pan-y;user-select:none;-webkit-user-select:none;transition:opacity .12s}
+/* 拖动时整行内容让位给下层的操作按钮，词本身跟着手指走（.s-chip） */
+.srow.dragging .s-content{opacity:0}
+.s-content:hover{background:var(--bg)}
+.s-content .main{flex:1;min-width:0;display:flex;align-items:baseline;gap:10px}
+.s-content .word{font-weight:600;font-size:15px;flex:none;cursor:inherit}
+.s-content .def{color:var(--muted);font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 释义前的词性：与详情页同样的主色斜体，随释义字号缩放 */
+.s-content .def .pos{min-width:0;margin-right:5px;font-size:.92em}
+.s-content .due{font-size:11px;color:var(--faint);white-space:nowrap}
+/* 行尾进入详情的箭头：图标只有 18px，点击区撑到 44×44 并贴到行的上下与右边缘。
+   「隐藏释义 / 隐藏英文」模式下「单词 + 释义」区域被用来揭开遮罩，这里就是进详情的唯一入口 */
+.s-content .chev{flex:none;align-self:stretch;width:44px;margin:-7px -12px -7px 0;padding:0;border:0;background:none;
+  display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;
+  -webkit-tap-highlight-color:transparent;transition:color .15s}
+.s-content .chev:hover{color:var(--primary)}
+.s-content .chev:active svg{transform:translateX(1px)}
+.s-content .chev svg{transition:transform .1s}
+/* 行首小喇叭：点击读单词，按下不触发滑动 / 长按 */
+.s-content .spk{flex:none;display:grid;place-items:center;width:28px;height:28px;margin:0 -6px 0 -4px;padding:0;border:0;border-radius:50%;background:none;color:var(--faint);cursor:pointer;transition:color .15s,background .15s,transform .05s}
+.s-content .spk svg{width:15px;height:15px}
+.s-content .spk:hover{color:var(--primary);background:var(--primary-soft)}
+.s-content .spk:active{transform:scale(.9)}
+/* 显示模式：被隐藏的一侧加模糊遮罩，点击「单词 + 释义」显示 / 再点收起 */
+.list.mode-en .def,.list.mode-zh .word{filter:blur(5px);opacity:.55;user-select:none;-webkit-user-select:none;transition:filter .15s,opacity .15s}
+.list.mode-en .srow.revealed .def,.list.mode-zh .srow.revealed .word{filter:none;opacity:1}
+@media (max-width:767px){.s-content .due{display:none}}
+.pie{width:16px;height:16px;border-radius:50%;border:2px solid var(--c);box-sizing:border-box;flex:none;display:inline-block;background:conic-gradient(var(--c) calc(var(--p) * 1%), transparent 0)}
+.pie.st-mastered{--c:var(--st-green)}.pie.st-learning{--c:var(--st-yellow)}.pie.st-new{--c:var(--st-red)}.pie.st-none{--c:var(--st-grey)}
+/* 拖动时露出的操作按钮条（顺序固定，等宽铺满整行；把词拖到哪个上面松手就执行哪个） */
+.s-opts{position:absolute;inset:0;display:none}
+.srow.dragging .s-opts{display:flex}
+.s-opt{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#fff;font-size:13px;font-weight:700;filter:brightness(.82);transition:filter .12s}
+.s-opt small{font-size:10px;font-weight:500;opacity:.85;white-space:nowrap}
+@media (max-width:359px){.s-opt small{display:none}}
+.s-opt.cancel{background:#94a3b8}
+.s-opt.know{background:var(--st-yellow)}
+.s-opt.reset{background:var(--st-red)}
+.s-opt.master{background:var(--st-green)}
+.s-opt.bookmark{background:var(--primary)}
+.s-opt.remove{background:#475569}
+.s-opt.active{filter:brightness(1.08)}
+.s-opt.active::before{content:"";position:absolute;inset:0;border:2px solid rgba(255,255,255,.9);border-radius:6px;box-sizing:border-box;pointer-events:none}
+/* 跟手的小卡片：拖动时整行内容收成它，落在哪个按钮上就执行哪个。
+   挂在 body 上（固定定位），所以能拖出这一行、拖到页面任何地方；行外没有按钮，松手就是取消 */
+.s-chip{position:fixed;top:0;left:0;z-index:90;display:flex;align-items:center;gap:7px;max-width:min(50vw,280px);
+  padding:5px 12px;border-radius:999px;background:var(--card);border:1px solid var(--border-strong);
+  box-shadow:0 6px 18px rgba(16,24,40,.28);font-size:14px;font-weight:600;white-space:nowrap;
+  pointer-events:none;transition:none;will-change:transform}
+.s-chip .t{overflow:hidden;text-overflow:ellipsis}
+/* 卡片上写着松手会执行什么：颜色与身下那个按钮一致 */
+.s-chip .a{flex:none;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;color:#fff;background:var(--c)}
+.s-chip.on{border-color:var(--c)}
+.s-chip.cancel{--c:#94a3b8}
+.s-chip.bookmark{--c:var(--primary)}
+.s-chip.reset{--c:var(--st-red)}
+.s-chip.master{--c:var(--st-green)}
+.s-chip.remove{--c:#475569}
+.s-chip.know{--c:var(--st-yellow)}
+/* 松手：卡片飞向按钮中心（取消则飞回按下的位置）并淡出 */
+.s-chip.dropping{transition:transform .18s ease-out,opacity .18s ease-out;opacity:0}
+@media (prefers-reduced-motion:reduce){.s-chip.dropping{transition:opacity .18s}}
+/* 多选：长按进入，行首勾选圈，底部批量操作栏 */
+.s-check{width:20px;height:20px;border-radius:50%;border:2px solid var(--border-strong);box-sizing:border-box;flex:none;display:inline-flex;align-items:center;justify-content:center;transition:.12s}
+.s-check.on{background:var(--primary);border-color:var(--primary)}
+.s-check.on::after{content:"";width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
+.srow.checked .s-content,.srow.checked .s-content:hover{background:var(--primary-soft)}
+.srow.selecting .s-content{cursor:default}
+.sel-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--card);border-top:1px solid var(--border);padding:8px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(16,24,40,.08);animation:pop .2s ease-out}
+.sel-bar .inner{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
+.sel-bar .row{display:flex;gap:8px;align-items:center}
+.sel-bar .sel-count{font-weight:700;font-size:14px;white-space:nowrap}
+.sel-bar .row .grow{text-align:right}
+.sel-bar .acts .btn{flex:1;color:#fff;font-weight:700;min-height:42px}
+.sel-bar .act-cancel{background:var(--bg);color:var(--text);border-color:var(--border-strong);flex:0 0 auto;padding:0 16px}
+.sel-bar .act-reset{background:var(--st-red)}
+.sel-bar .act-master{background:var(--st-green)}
+.sel-bar .act-remove{background:#475569}
+.sel-bar .btn:disabled{opacity:.45;cursor:not-allowed}
+.page.has-selbar{padding-bottom:150px}
+@media (max-width:767px){.sel-bar{bottom:calc(var(--tab-h) + env(safe-area-inset-bottom));padding-bottom:10px}.sel-bar .row .grow{display:none}}
+.pager{flex-wrap:wrap}
+.pager .more{width:100%;text-align:center;font-size:12px;color:var(--faint);min-height:20px}
+
+/* ---------- 词库书签（需求 3.3.5） ---------- */
+/* 词库名旁边的「跳到书签」图标：点击区 40×40，图标 18px */
+.head-card .bm-go{flex:none;width:40px;height:40px;margin:-9px -8px -9px 0;padding:0;border:0;background:none;border-radius:50%;
+  display:grid;place-items:center;color:var(--primary);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background .15s,transform .05s}
+.head-card .bm-go svg{width:18px;height:18px}
+.head-card .bm-go:hover{background:var(--primary-soft)}
+.head-card .bm-go:active{transform:scale(.9)}
+/* 书签所在的行：左侧一道主色竖条，安静但一眼能认出来 */
+.srow.bookmarked .s-content{box-shadow:inset 3px 0 0 var(--primary)}
+/* 跳过去之后闪一下，告诉用户落在哪儿了 */
+.srow.bm-flash .s-content{animation:bm-flash 1.6s ease-out}
+@keyframes bm-flash{0%,55%{background:var(--primary-soft)}100%{background:var(--card)}}
+@media (prefers-reduced-motion:reduce){.srow.bm-flash .s-content{animation:none;background:var(--primary-soft)}}
+.pager .btn-ghost{margin-left:10px}
+
+/* ---------- 回到顶部 ---------- */
+.to-top{position:fixed;right:16px;bottom:calc(24px + env(safe-area-inset-bottom));z-index:25;
+  width:44px;height:44px;border-radius:50%;border:1px solid var(--border);background:var(--card);color:var(--muted);
+  display:grid;place-items:center;cursor:pointer;box-shadow:var(--shadow);-webkit-tap-highlight-color:transparent;
+  animation:pop .18s ease-out;transition:color .15s,border-color .15s,transform .05s}
+.to-top svg{width:20px;height:20px}
+.to-top:hover{color:var(--primary);border-color:var(--primary)}
+.to-top:active{transform:scale(.92)}
+/* 手机端让开底部 Tab 栏 */
+@media (max-width:767px){.to-top{bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 16px)}}
+@media (prefers-reduced-motion:reduce){.to-top{animation:none}}

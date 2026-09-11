@@ -1,0 +1,9 @@
+.book-pick{display:flex;align-items:center;gap:12px}
+.book-pick .cover{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#4f6df5,#7c5cff);color:#fff;display:grid;place-items:center;font-weight:800;font-size:12px;flex:none;text-align:center;line-height:1.1;padding:2px}
+.stats.today{margin:4px 0 8px}
+.stats.today .stat b{font-size:30px}
+.done-banner{display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--ok-soft);border-radius:12px;color:var(--ok);font-weight:600}
+.totals{display:flex;justify-content:center;gap:28px;color:var(--muted);font-size:14px;margin-top:16px}
+.totals b{color:var(--text);font-size:16px}
+.empty-book{text-align:center;padding:48px 8px}
+.empty-book .icon{font-size:44px}

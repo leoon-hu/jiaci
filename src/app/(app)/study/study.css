@@ -1,0 +1,25 @@
+body{overscroll-behavior:none}
+/* 学习页没有全局顶栏，吸顶的 Tab 栏让开自己的进度条（审计 NU05） */
+#answer{--sticky-top:44px}
+.study-top{position:sticky;top:0;z-index:10;background:var(--bg);padding:10px 12px;display:flex;align-items:center;gap:12px;max-width:820px;margin:0 auto}
+.study-top .progress{flex:1}
+.study-top .count{font-size:13px;color:var(--muted);min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
+.study-wrap{max-width:820px;margin:0 auto;padding:16px}
+.front{max-width:820px;margin:0 auto;padding:0 16px;min-height:calc(100vh - 52px);display:flex;flex-direction:column;cursor:pointer;user-select:none;-webkit-tap-highlight-color:transparent}
+.front-top{padding:32px 0 8px;text-align:center}
+.front-top .kind{margin-bottom:14px}
+.spelling-lg{font-size:48px;font-weight:700;letter-spacing:.3px;line-height:1.1;word-break:break-word}
+.phonetic-row{display:flex;align-items:center;justify-content:center;gap:12px;color:var(--muted);font-size:20px;margin-top:10px}
+.front-hint{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;color:var(--muted);font-size:15px;line-height:1.7;min-height:140px;padding:16px 0}
+.front-hint .pulse{width:46px;height:46px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;margin-bottom:12px;animation:pulse 1.8s ease-in-out infinite}
+.front-hint .pulse svg{width:22px;height:22px}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 var(--primary-soft)}50%{box-shadow:0 0 0 12px transparent}}
+.front-record{padding:12px 0 6px;border-top:1px solid var(--border)}
+.front-record h4,.front-examples h4{font-size:12px;color:var(--muted);margin:0 0 6px;font-weight:700;letter-spacing:.6px}
+.front-record .hist-empty{padding:4px 0}
+.front-examples{padding:10px 0 28px}
+.front-examples .example .en{font-size:16px;line-height:1.55}
+.kbd-hint{display:none;text-align:center;font-size:12px;color:var(--faint);padding:0 0 12px;max-width:820px;margin:0 auto}
+@media (min-width:768px){.kbd-hint{display:block}.front{min-height:calc(100vh - 84px)}}
+@media (max-width:767px){.spelling-lg{font-size:42px}.front{padding:0 12px}}
+#answer .page{padding-bottom:calc(110px + env(safe-area-inset-bottom))}

@@ -1,0 +1,14 @@
+.row.setting{gap:14px}
+.row.setting .ctl{flex:none;display:flex;align-items:center;gap:8px}
+.num{width:88px;text-align:center;min-height:40px;padding:6px 8px}
+.range{width:140px;accent-color:var(--primary)}
+@media (max-width:767px){
+  .row.setting.wrapm{flex-wrap:wrap}
+  .row.setting.wrapm .ctl{width:100%;justify-content:flex-start}
+  .row.setting.wrapm .seg{display:flex;width:100%}
+  .row.setting.wrapm .seg button{flex:1}
+  .range{flex:1}
+}
+.danger-zone .title{color:var(--danger)}
+.saved{font-size:12px;color:var(--ok);opacity:0;transition:.2s}
+.saved.show{opacity:1}

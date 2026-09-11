@@ -1,0 +1,43 @@
+# 变形去重时一律保留的形式：词典把它标成别的词的变形、又没给星级，但已经是独立的常用词（作名词或形容词）；一行一个
+# 名词
+refreshments
+arms
+fungi
+morals
+fumes
+abode
+catering
+skiing
+jogging
+hiking
+surfing
+rendering
+goggles
+skateboarding
+biometrics
+# 形容词 / 副词
+addicted
+committed
+corresponding
+frustrating
+frustrated
+inspiring
+irritating
+nourishing
+overlapping
+perplexing
+enlightening
+polished
+puzzled
+acclaimed
+alluring
+trifling
+yielding
+booming
+thriving
+motivated
+overwhelmed
+forwards
+overjoyed
+flustered
+enthralled

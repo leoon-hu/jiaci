@@ -1,0 +1,153 @@
+# 海外生活 · 孩子上学：学校类型、报名、课程作业、家校沟通、活动与健康
+# 学校与报名
+school
+kindergarten
+preschool
+daycare
+elementary
+primary
+middle school
+secondary
+high school
+grade
+year
+semester
+term
+enroll
+enrollment
+register
+registration
+tuition
+fee
+scholarship
+public
+private
+district
+zone
+principal
+teacher
+counselor
+tutor
+tutoring
+classmate
+peer
+student
+pupil
+classroom
+cafeteria
+canteen
+library
+gym
+playground
+uniform
+backpack
+stationery
+supplies
+textbook
+workbook
+notebook
+lunchbox
+# 课程与作业
+curriculum
+subject
+math
+science
+literacy
+reading
+writing
+spelling
+vocabulary
+art
+music
+physical education
+homework
+assignment
+project
+essay
+report card
+score
+mark
+test
+quiz
+exam
+midterm
+final
+assessment
+gifted
+bilingual
+transcript
+diploma
+graduate
+graduation
+ceremony
+study
+revise
+review
+borrow
+return
+overdue
+# 家校沟通
+parent
+guardian
+meeting
+conference
+volunteer
+newsletter
+notice
+announcement
+portal
+app
+contact
+emergency
+permission
+consent
+form
+excuse
+note
+absent
+absence
+tardy
+late
+attendance
+recess
+schedule
+timetable
+bell
+pick up
+drop off
+carpool
+bus
+field trip
+trip
+after school
+club
+activity
+extracurricular
+sport
+team
+practice
+coach
+concert
+performance
+recital
+# 健康与行为
+nurse
+sick
+fever
+allergy
+medication
+vaccination
+immunization
+record
+behavior
+bully
+bullying
+discipline
+detention
+suspension
+reward
+praise
+encourage
+confidence
+support
+distance learning
