@@ -23,6 +23,7 @@
     "e2e": "node e2e/flow.mjs",
     "e2e:shots": "node e2e/screenshots.mjs",
     "e2e:clean": "node e2e/cleanup.mjs",
+    "readme:shots": "node e2e/readme-shots.mjs",
     "sync:content": "tsx scripts/sync-content.ts"
   },
   "dependencies": {

@@ -1,7 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /** 未登录仅可见登录页与静态页（需求 A5）：这里只检查 Cookie 是否存在，具体有效性由页面 / API 校验 */
-const PUBLIC = [/^\/login/, /^\/legal\//, /^\/api\//, /^\/_next\//, /^\/manifest\.webmanifest$/, /^\/icons\//, /^\/favicon\.ico$/, /^\/icon\.svg$/, /^\/apple-touch-icon\.png$/, /^\/logo-wordmark\.svg$/, /^\/sw\.js$/];
+const PUBLIC = [/^\/login/, /^\/legal\//, /^\/api\//, /^\/_next\//, /^\/manifest\.webmanifest$/, /^\/icons\//, /^\/favicon\.ico$/, /^\/icon\.svg$/, /^\/apple-touch-icon\.png$/, /^\/logo-wordmark\.svg$/, /^\/sw\.js$/,
+  // 落地页用的截图、分享卡片图与爬虫入口
+  /^\/shots\//, /^\/og\.png$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -26,4 +28,4 @@ export function middleware(req: NextRequest) {
 }
 
 // 静态文件不必进 middleware：线上这些路径已由 nginx 直接发送，本机开发下也只是白跑一次函数
-export const config = { matcher: ["/((?!_next/static|_next/image|icons/|favicon\\.ico|apple-touch-icon\\.png|logo-wordmark\\.svg|manifest\\.webmanifest|sw\\.js).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|icons/|shots/|favicon\\.ico|apple-touch-icon\\.png|logo-wordmark\\.svg|og\\.png|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|sw\\.js).*)"] };

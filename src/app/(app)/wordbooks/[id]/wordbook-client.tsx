@@ -22,7 +22,8 @@ import "./wordbook.css";
 type Book = { id: string; name: string; type: "builtin" | "import" | "custom"; wordCount: number; learned: number; mastered: number; isCurrent: boolean };
 type ListResp = { rows: ListRow[]; total: number; counts: Record<string, number>; nextCursor: number | null; isCurrent: boolean };
 const TYPE_TAG: Record<Book["type"], [string, string]> = { builtin: ["tag-builtin", "内置"], import: ["tag-import", "导入"], custom: ["tag-custom", "自建"] };
-const FILTERS: Array<[string, string]> = [["all", "全部"], ["new", "未开始"], ["learning", "学习中"], ["mastered", "已掌握"], ["none", "未加入"]];
+/** 状态筛选：按钮上带该状态的饼图样式（空心 / 半填充 / 实心），就是列表的图例 */
+const FILTERS: Array<[string, string, string | null, number]> = [["all", "全部", null, 0], ["new", "未开始", "st-new", 0], ["learning", "学习中", "st-learning", 50], ["mastered", "已掌握", "st-mastered", 100], ["none", "未加入", "st-none", 0]];
 const SORT_OPTIONS = [{ value: "order", label: "按添加顺序" }, { value: "alpha", label: "按字母" }, { value: "freq", label: "按词频" }, { value: "due", label: "按下次复习时间" }, { value: "random", label: "随机" }];
 /** 随机排序的种子编码在排序值里（random:<种子>）：翻页、书签还原都要按同一种子才不会错位；
  *  每次选「随机」都换一个种子，也就是重新洗一次牌 */
@@ -426,20 +427,21 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
           </div>
         )}
         <div className="toolbar">
-          <div className="chips">{FILTERS.map(([k, label]) => (<button key={k} className={"chip btn-chip" + (filter === k ? " active" : "")} onClick={() => setFilter(k)}>{label} <span className="cnt">{k === "all" ? (data?.counts.all ?? "") : (data?.counts[k] ?? "")}</span></button>))}</div>
-          <div className="search"><IconSearch /><input className="input" placeholder="搜索单词或释义" value={q} onChange={(e) => setQ(e.target.value)} /></div>
-          <Dropdown block ariaLabel="排序" value={sortKey(sort)} onChange={(v) => setSort(withDir(v, isDesc(sort)))} options={SORT_OPTIONS} />
-          <button type="button" className={"dir-btn" + (isDesc(sort) ? " desc" : "")} disabled={isRandom(sort)}
-            title={isRandom(sort) ? "随机排序没有正倒序" : isDesc(sort) ? "当前倒序，点击改正序" : "当前正序，点击改倒序"}
-            aria-label={isDesc(sort) ? "当前倒序，点击改正序" : "当前正序，点击改倒序"} aria-pressed={isDesc(sort)}
-            onClick={() => setSort(withDir(sortKey(sort), !isDesc(sort)))}><IconArrowUp /></button>
-          <div className="seg" title="列表显示模式">{MODES.map(([m, label]) => <button key={m} className={mode === m ? "active" : ""} onClick={() => changeMode(m)}>{label}</button>)}</div>
+          <div className="chips">{FILTERS.map(([k, label, pie, p]) => (<button key={k} className={"chip btn-chip" + (filter === k ? " active" : "")} onClick={() => setFilter(k)}>
+            <span className="lbl">{pie && <span className={"pie " + pie} style={{ ["--p" as string]: p }} />}{label}</span><span className="cnt">{k === "all" ? (data?.counts.all ?? "") : (data?.counts[k] ?? "")}</span></button>))}</div>
+          <div className="tools">
+            <div className="search"><IconSearch /><input className="input" placeholder="搜索单词或释义" value={q} onChange={(e) => setQ(e.target.value)} /></div>
+            <Dropdown block ariaLabel="排序" value={sortKey(sort)} onChange={(v) => setSort(withDir(v, isDesc(sort)))} options={SORT_OPTIONS} />
+            <button type="button" className={"dir-btn" + (isDesc(sort) ? " desc" : "")} disabled={isRandom(sort)}
+              title={isRandom(sort) ? "随机排序没有正倒序" : isDesc(sort) ? "当前倒序，点击改正序" : "当前正序，点击改倒序"}
+              aria-label={isDesc(sort) ? "当前倒序，点击改正序" : "当前正序，点击改倒序"} aria-pressed={isDesc(sort)}
+              onClick={() => setSort(withDir(sortKey(sort), !isDesc(sort)))}><IconArrowUp /></button>
+            <div className="seg" title="列表显示模式">{MODES.map(([m, label]) => <button key={m} className={mode === m ? "active" : ""} onClick={() => changeMode(m)}>{label}</button>)}</div>
+          </div>
         </div>
+        {/* 一行操作提示；按钮的含义拖起来就能看到，这里只提醒有这两个手势 */}
         <div className="list-hint">
-          <span><span className="pie st-new" style={{ ["--p" as string]: 0 }} />未开始 / 未加入（空心）</span><span><span className="pie st-learning" style={{ ["--p" as string]: 50 }} />学习中（按进度填充）</span><span><span className="pie st-mastered" style={{ ["--p" as string]: 100 }} />已掌握（实心）</span>
-          <span>按住一行横向拖动，行内露出「取消 / 书签 / 重新记 / 加进度 / 已掌握 / 移出」（顺序固定），把词拖到哪个按钮上松手就执行哪个，拖到行外松手是取消；改状态几秒内可撤销；长按一行进入多选</span>
-          <span>「书签」记住这一行和当前的筛选 / 搜索 / 排序 / 显示模式，点词库名旁的书签图标跳回来</span>
-          {mode !== "both" && <span>点击「单词 + 释义」显示被遮住的部分并朗读该词，再点一次收起；点击其余位置进入详情</span>}
+          <span>横向拖动一行：书签 / 重新记 / 加进度 / 已掌握 / 移出；长按多选{mode !== "both" && "；点击单词或释义揭开遮罩并朗读"}</span>
         </div>
         <div className={`list edge dense mode-${mode}`}>
           {loadErr && !data ? <div className="empty">{loadErr}</div> : !data ? <div className="empty">加载中…</div> : rows.length === 0 ? <div className="empty"><div className="icon">🔍</div>没有匹配的单词</div> : rows.map((r) => (

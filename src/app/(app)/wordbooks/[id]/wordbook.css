@@ -2,22 +2,37 @@
 .head-card .cover{width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,#4f6df5,#7c5cff);color:#fff;display:grid;place-items:center;font-weight:800;font-size:12px;flex:none;text-align:center;line-height:1.1;padding:2px}
 .head-card h2{margin:0;font-size:20px}
 .section.mt-8{padding-top:8px}
-.toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:12px 0 8px}
-.toolbar .search{flex:1;min-width:160px}
-.toolbar .dd.block{flex:none;min-width:150px}
-.toolbar .seg button{min-height:30px;padding:0 10px;font-size:13px}
+/* 工具栏：第一行五个状态筛选等宽铺满（文字在上、数量在下）；第二行搜索 / 排序 / 方向同高；显示模式手机上单独一行、桌面跟在后面 */
+.toolbar{display:flex;flex-direction:column;gap:8px;margin:12px 0 8px}
+.toolbar .chips{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:6px}
+.toolbar .chip.btn-chip{flex-direction:column;justify-content:center;gap:1px;min-height:46px;padding:4px 2px;border-radius:12px;line-height:1.2;font-size:13px}
+.toolbar .btn-chip .lbl{display:inline-flex;align-items:center;gap:3px}
+.toolbar .btn-chip .pie{width:11px;height:11px;border-width:1.5px}
+.toolbar .btn-chip .cnt{margin:0;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+.toolbar .btn-chip.active .cnt{color:rgba(255,255,255,.8)}
+.toolbar .tools{--tool-h:40px;display:flex;flex-wrap:wrap;gap:8px;align-items:stretch}
+.toolbar .tools .search{flex:1 1 120px;min-width:0}
+.toolbar .tools .search .input{height:var(--tool-h);min-height:0;padding:0 10px 0 34px;border-radius:10px;font-size:14px}
+.toolbar .tools .dd.block{flex:none;width:auto;min-width:0}
+.toolbar .tools .dd.block .dd-btn{height:var(--tool-h);min-height:0;padding:0 8px 0 12px;border-radius:10px;font-size:14px}
 /* 排序方向：箭头朝上 = 正序，朝下 = 倒序；随机排序没有方向，按钮置灰 */
-.toolbar .dir-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:32px;padding:0;
-  border:1px solid var(--border-strong);border-radius:9px;background:var(--card);color:var(--muted);cursor:pointer}
+.toolbar .dir-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:var(--tool-h);height:var(--tool-h);padding:0;
+  border:1px solid var(--border-strong);border-radius:10px;background:var(--card);color:var(--muted);cursor:pointer}
 .toolbar .dir-btn svg{width:16px;height:16px;transition:transform .15s}
 .toolbar .dir-btn.desc svg{transform:rotate(180deg)}
 .toolbar .dir-btn:hover:not(:disabled){color:var(--text);border-color:var(--primary)}
 .toolbar .dir-btn:disabled{opacity:.45;cursor:default}
-.btn-chip .cnt{margin-left:3px;font-size:12px;color:var(--faint)}
-.btn-chip.active .cnt{color:rgba(255,255,255,.8)}
-.list-hint{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--faint);margin:0 0 6px}
-.list-hint .pie{width:12px;height:12px;border-width:1.5px;vertical-align:-2px;margin-right:3px;display:inline-block}
-@media (max-width:767px){.toolbar .dd.block{flex:1}.toolbar .seg{width:100%}.toolbar .seg button{flex:1}}
+.toolbar .seg{flex:1 0 100%;display:flex}
+.toolbar .seg button{flex:1;min-height:32px;padding:0 10px;font-size:13px}
+@media (min-width:768px){
+  .toolbar .chips{grid-template-columns:repeat(5,96px)}
+  .toolbar .tools .search{flex:0 1 260px}
+  .toolbar .tools .dd.block{min-width:170px}
+  .toolbar .seg{flex:none;margin-left:auto}
+  .toolbar .seg button{flex:none}
+}
+/* 列表上方的一行操作提示 */
+.list-hint{font-size:11px;line-height:1.5;color:var(--faint);margin:0 0 6px}
 .pager{display:flex;justify-content:center;align-items:center;gap:8px;padding:14px;color:var(--muted);font-size:13px}
 .add-inline{display:flex;gap:8px;margin-top:10px}
 /* 紧凑单词行 + 进度饼图 */

@@ -2,10 +2,17 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import NavTracker from "@/components/NavTracker";
+import { siteUrl } from "@/lib/site";
+
+const DESCRIPTION = "精简、高效的背单词网站：内置 / 导入词库，FSRS 间隔重复安排复习，AI 填充的词条资料与真人级发音。免费、开源、仅中文界面，面向海外英语学习者。";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl()),
   title: { default: "AI加词", template: "%s · AI加词" },
-  description: "AI 驱动的精简背单词",
+  description: DESCRIPTION,
+  // 分享到微信 / Telegram / X 时的预览卡片；图片是 public/og.png（1200×630），登录后的页面沿用同一张
+  openGraph: { type: "website", siteName: "AI加词", title: "AI加词", description: DESCRIPTION, locale: "zh_CN", images: [{ url: "/og.png", width: 1200, height: 630, alt: "AI加词" }] },
+  twitter: { card: "summary_large_image", title: "AI加词", description: DESCRIPTION, images: ["/og.png"] },
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "AI加词", statusBarStyle: "default" },
   // 图标：src/app/icon.svg 与 favicon.ico 由 Next 自动加上；这里补 iOS 主屏图标

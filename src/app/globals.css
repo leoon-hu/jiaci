@@ -11,7 +11,7 @@
   --shadow:0 1px 2px rgba(16,24,40,.05),0 1px 3px rgba(16,24,40,.08);
   --shadow-lg:0 10px 30px rgba(16,24,40,.12);
   --radius:14px; --radius-sm:10px;
-  --header-h:56px; --tab-h:60px;
+  --header-h:48px; --tab-h:52px;
   /* 吸顶元素（Tab 栏）要让开的高度：带顶栏的页面是顶栏高度，学习页在 study.css 里覆盖 */
   --sticky-top:var(--header-h);
   /* 单词状态四色：绿 已掌握 / 黄 学习中 / 红 已加入未开始 / 灰 未加入学习 */
@@ -81,12 +81,12 @@ p{margin:0 0 10px}
 .app-nav a:hover{background:var(--bg);color:var(--text)}
 .app-nav a.active{color:var(--primary);background:var(--primary-soft)}
 .header-right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
-.avatar{width:30px;height:30px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-weight:700;font-size:13px}
+.avatar{width:28px;height:28px;border-radius:50%;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-weight:700;font-size:13px}
 
 /* ---------- 底部 Tab（手机） ---------- */
 .tabbar{display:none;position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--card);border-top:1px solid var(--border);padding-bottom:env(safe-area-inset-bottom)}
-.tabbar a{flex:1;height:var(--tab-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--muted)}
-.tabbar a svg{width:24px;height:24px}
+.tabbar a{flex:1;height:var(--tab-h);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;font-size:11px;color:var(--muted)}
+.tabbar a svg{width:22px;height:22px}
 .tabbar a.active{color:var(--primary);font-weight:600}
 
 @media (max-width:767px){

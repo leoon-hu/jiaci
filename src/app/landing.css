@@ -1,0 +1,42 @@
+/* 落地页（未登录的 /）：只用全局的变量与 .btn / .card，自己只管版式 */
+.land{max-width:1120px;margin:0 auto;padding:0 20px 40px}
+.land-top{height:var(--header-h);display:flex;align-items:center;justify-content:space-between}
+.land-nav{display:flex;align-items:center;gap:16px}
+.land-nav a{font-weight:500}
+
+.land-hero{text-align:center;padding:40px 0 28px}
+.land-hero h1{font-size:34px;font-weight:800;letter-spacing:-.5px;margin:0 0 12px}
+.land-lead{font-size:16px;color:var(--muted);max-width:640px;margin:0 auto 22px}
+.land-cta{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+
+.land-shots{display:flex;gap:16px;justify-content:center;overflow-x:auto;padding:8px 0 16px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
+.land-shots figure{flex:0 0 260px;margin:0;scroll-snap-align:center}
+.land-shots img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow-lg);background:var(--card)}
+.land-shots figcaption{text-align:center;font-size:13px;color:var(--muted);margin-top:10px}
+
+.land-features{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:24px}
+.land-features .card{margin:0}
+.land-features h3{font-size:16px;margin:0 0 6px}
+.land-features p{margin:0;color:var(--muted);font-size:14px}
+
+.land-why{margin-top:24px}
+.land-why h2{font-size:18px;margin:0 0 8px}
+.land-why p{color:var(--muted)}
+.land-why p:last-child{margin-bottom:0}
+
+.land-foot{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;font-size:13px;color:var(--faint);margin-top:40px}
+.land-foot a{color:var(--muted)}
+
+@media (max-width:767px){
+  .land{padding:0 16px 32px}
+  .land-hero{padding:28px 0 20px}
+  .land-hero h1{font-size:28px}
+  .land-lead br{display:none}
+  .land-cta .btn{flex:1 1 100%}
+  .land-shots{justify-content:flex-start;margin:0 -16px;padding:8px 16px 16px}
+  .land-shots figure{flex-basis:220px}
+  .land-features{grid-template-columns:1fr}
+}
+@media (min-width:768px) and (max-width:1023px){
+  .land-features{grid-template-columns:repeat(2,1fr)}
+}
