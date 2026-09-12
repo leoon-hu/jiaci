@@ -3,12 +3,14 @@
  *   GET /api/audio/word/{voice}/{spelling}.mp3   单词（短语空格写成下划线）
  *   GET /api/audio/sent/{voice}/{hash}.mp3       例句（规范化文本的 SHA-1，须已登记在 audio_text）
  *   GET /api/audio/def/{voice}/{hash}.mp3        中文释义（同上，音色是 tts.voice_zh；列表点词时跟在单词后朗读）
- * 文件存在直接返回（一年缓存、ETag、支持 Range；接口需登录，缓存标 private 不给共享缓存存）；不存在则校验后同步合成再返回；合成失败返回 404 加 X-Audio-Fallback，前端退到 Web Speech。
- * 需要登录；按 IP 限制按需合成次数。
+ * 文件存在直接返回（一年缓存、ETag、支持 Range，谁都能读——公开词条页 /dict/* 的发音按钮也走这里，音频只按文本对应、不含任何用户信息，
+ * 缓存标 public 让 Cloudflare 存）；不存在则**需要登录**、校验后同步合成再返回（匿名访客直接 404，前端退到 Web Speech）；
+ * 合成失败返回 404 加 X-Audio-Fallback。按用户限制按需合成次数。
  */
 import { promises as fs } from "node:fs";
 import path from "node:path";
-import { withUser } from "@/lib/api";
+import { handle } from "@/lib/api";
+import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { audioDir, ensureClip, ttsConfig, voiceAllowed } from "@/lib/tts";
 import { allow } from "@/lib/rate-limit";
@@ -63,7 +65,7 @@ const accelRedirect = (prefix: string, relPath: string) =>
 
 async function serve(req: Request, abs: string, size: number, mtimeMs: number): Promise<Response> {
   const etag = `"${size}-${Math.floor(mtimeMs)}"`;
-  const base: Record<string, string> = { "Content-Type": "audio/mpeg", "Cache-Control": "private, max-age=31536000, immutable", ETag: etag, "Accept-Ranges": "bytes" };
+  const base: Record<string, string> = { "Content-Type": "audio/mpeg", "Cache-Control": "public, max-age=31536000, immutable", ETag: etag, "Accept-Ranges": "bytes" };
   if (req.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers: base });
   const buf = await fs.readFile(abs);
   const m = /^bytes=(\d*)-(\d*)$/.exec(req.headers.get("range") ?? "");
@@ -77,7 +79,7 @@ async function serve(req: Request, abs: string, size: number, mtimeMs: number): 
   return new Response(toBody(buf), { headers: { ...base, "Content-Length": String(size) } });
 }
 
-export const GET = withUser(async (req, { params }: { params: Promise<{ path: string[] }> }, user) => {
+export const GET = handle(async (req, { params }: { params: Promise<{ path: string[] }> }) => {
   const parsed = parseAudioPath((await params).path ?? []);
   if (!parsed) return fallback();
   const cfg = await ttsConfig();
@@ -99,6 +101,9 @@ export const GET = withUser(async (req, { params }: { params: Promise<{ path: st
   const abs = path.join(audioDir(), rel);
   let st = await fs.stat(abs).catch(() => null);
   if (!st || st.size === 0) {
+    // 按需合成只给登录用户：匿名访客（公开词条页）拿不到现成文件就退到 Web Speech，接口不能被当成免费 TTS
+    const user = await getCurrentUser();
+    if (!user) return fallback();
     if (!allowSynth(user.id)) return fallback(429);
     // 每人每天的合成段数上限：整张词典 × 4 音色远大于磁盘，光靠每分钟限速拦不住（审计 NO01）
     if (!allow(`synth-day:${user.id}`, await getConfigInt("tts.daily_synth_per_user"), 86_400_000)) return fallback(429);

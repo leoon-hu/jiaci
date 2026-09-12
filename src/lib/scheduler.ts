@@ -142,6 +142,20 @@ export function applyRating(p: ProgressState, result: RateResult, today: string,
   }
 }
 
+/** 「认识 / 已掌握」算今天学过；模糊、重新记、移出都不算 */
+export const isDone = (r: RateResult) => r === "know" || r === "master";
+/**
+ * 今天学过的词 = 今天**最后一条**记录是认识 / 已掌握的词（logs 须按打分时间升序）。
+ * 认识之后又「重新记」的词已经清成新卡，要能重新进今天的队列、也要能再打认识；
+ * 只要「今天有过一条认识」就算学过的话，这种词会在队列与单词列表的「加进度」两边都被拦下——
+ * 列表里明明是「未开始」，拖到「加进度」却提示今天学过。
+ */
+export function doneTodayIds(logs: Array<{ wordId: string; result: RateResult }>): Set<string> {
+  const last = new Map<string, RateResult>();
+  for (const l of logs) last.set(l.wordId, l.result);
+  return new Set([...last].filter(([, r]) => isDone(r)).map(([id]) => id));
+}
+
 /** 打分按钮上预先显示的文案（按今天计算，迟到的复习会体现在天数里） */
 export function rateLabels(p: ProgressState, o: SchedulerOptions = {}, today = todayUtc()): { know: string; fuzzy: string } {
   const master = o.masterInterval ?? DEFAULT_MASTER_INTERVAL;

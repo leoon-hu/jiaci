@@ -5,7 +5,7 @@ import { AI_CARD_SELECT, aiDetailSelect, aiProvidersWithData, aiRowOf, isFullAiR
 import { prisma } from "./db";
 import { ApiError } from "./api";
 import { getConfig, getConfigInt } from "./config";
-import { applyRating, NEW_PROGRESS, rateLabels, type ProgressState, type RateResult, type SchedulerOptions } from "./scheduler";
+import { applyRating, doneTodayIds, isDone, NEW_PROGRESS, rateLabels, type ProgressState, type RateResult, type SchedulerOptions } from "./scheduler";
 import { deriveStatus, pieProgress, type WordStatus } from "./status";
 import { fromDate, toDate } from "./dates";
 import { getSettings } from "./settings";
@@ -115,8 +115,10 @@ export type RateOutcome = Awaited<ReturnType<typeof rateWord>>;
  * 打分：整段放在一个事务里，并按 (用户, 词) 加咨询锁——
  * 原来是「读进度 → 算 → 写」三步分开，同一个词的并发打分（离线补交、多标签页）会互相覆盖，
  * clientTs 幂等也是先查后插，并发时后到的那条撞唯一键变成 500（审计 F175）。
+ * preview = true 时只算不写：守卫、调度都照常走，返回值与真打分一模一样，但进度与学习记录都不落库——
+ * 单词列表的「加进度」靠它先拿到结果本地显示，撤销期过后再用同一个 clientTs 真正提交。
  */
-export async function rateWord(userId: string, wordId: string, result: RateResult, today: string, clientTs?: string, source: StudySource = "study") {
+export async function rateWord(userId: string, wordId: string, result: RateResult, today: string, clientTs?: string, source: StudySource = "study", preview = false) {
   const opts = await schedulerOptions();
   // 「今天」一律按客户端本地日期存的 study_date 算，不用服务器 UTC 时刻（审计 F035）
   const studyDate = toDate(today)!;
@@ -136,24 +138,28 @@ export async function rateWord(userId: string, wordId: string, result: RateResul
       if ((result === "know" || result === "fuzzy") && (existing?.status === "removed" || existing?.status === "mastered")) {
         return { progress: toProgressState(existing), nextInterval: -1, requeueToday: false, duplicate: false, skipped: existing.status as string | null };
       }
-      // 同一个词当天已经打过「认识 / 已掌握」，再打一次「认识」不重复记（多标签页、多设备用旧队列，审计 NU06）
+      // 同一个词当天已经打过「认识 / 已掌握」，再打一次「认识」不重复记（多标签页、多设备用旧队列，审计 NU06）。
+      // 只看今天最后一条记录：认识之后又「重新记」的词已经清成新卡，再打认识要照常记——
+      // 原来只要今天有过一条认识就拦，重新记后的词在列表里是「未开始」，拖到「加进度」却被告知今天学过
       if (result === "know") {
-        const doneToday = await tx.studyLog.findFirst({ where: { userId, wordId, result: { in: ["know", "master"] }, studyDate }, select: { nextInterval: true } });
-        if (doneToday) {
-          return { progress: toProgressState(existing), nextInterval: doneToday.nextInterval, requeueToday: false, duplicate: true, skipped: null as string | null };
+        const last = await tx.studyLog.findFirst({ where: { userId, wordId, studyDate }, orderBy: { studiedAt: "desc" }, select: { result: true, nextInterval: true } });
+        if (last && isDone(last.result)) {
+          return { progress: toProgressState(existing), nextInterval: last.nextInterval, requeueToday: false, duplicate: true, skipped: null as string | null };
         }
       }
       // 补交上来的旧打分不能把更新的进度改回去：另一台设备已经在更晚的日期学过这个词了（审计 NU02）
       const lastReview = fromDate(existing?.lastReview ?? null);
       if ((result === "know" || result === "fuzzy") && lastReview && lastReview > today) {
-        await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: existing?.interval ?? 0, clientTs: clientTs ?? null, studyDate, source } });
+        if (!preview) await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: existing?.interval ?? 0, clientTs: clientTs ?? null, studyDate, source } });
         return { progress: toProgressState(existing), nextInterval: existing?.interval ?? 0, requeueToday: false, duplicate: false, skipped: "stale" as string | null };
       }
       const outcome = applyRating(toProgressState(existing), result, today, opts);
       const p = outcome.progress;
-      const fields = { interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: toDate(p.dueDate), lastReview: toDate(p.lastReview) };
-      await tx.userWordProgress.upsert({ where: { userId_wordId: { userId, wordId } }, create: { userId, wordId, ...fields }, update: fields });
-      await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: outcome.nextInterval, clientTs: clientTs ?? null, studyDate, source } });
+      if (!preview) {
+        const fields = { interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: toDate(p.dueDate), lastReview: toDate(p.lastReview) };
+        await tx.userWordProgress.upsert({ where: { userId_wordId: { userId, wordId } }, create: { userId, wordId, ...fields }, update: fields });
+        await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: outcome.nextInterval, clientTs: clientTs ?? null, studyDate, source } });
+      }
       return { progress: p, nextInterval: outcome.nextInterval, requeueToday: outcome.requeueToday, duplicate: false, skipped: null as string | null };
     });
   } catch (e) {
@@ -233,9 +239,10 @@ export async function buildTodayQueue(userId: string, today: string, opts: { ext
   const bookId = await getCurrentWordbookId(userId);
   // 今天 = study_date 等于客户端本地日期；用服务器 UTC 时刻切会让时区不同的用户错开一天（审计 F035）
   const studyDate = toDate(today)!;
-  const todayLogs = await prisma.studyLog.findMany({ where: { userId, studyDate }, select: { wordId: true, result: true, source: true } });
-  // 队列排除：今天已经打过认识 / 已掌握的词都不再出现（不论来源）
-  const doneToday = new Set(todayLogs.filter((l) => l.result === "know" || l.result === "master").map((l) => l.wordId));
+  const todayLogs = await prisma.studyLog.findMany({ where: { userId, studyDate }, orderBy: { studiedAt: "asc" }, select: { wordId: true, result: true, source: true } });
+  // 队列排除：今天已经打过认识 / 已掌握的词都不再出现（不论来源）；
+  // 按每个词今天最后一条记录算，与 rateWord 的守卫一致——认识之后又「重新记」的词按新词重新进队列
+  const doneToday = doneTodayIds(todayLogs);
   // 首页的「今日已完成」只算学习卡上完成的：在单词列表里批量标已掌握不是「学过」（审计 F024）
   const doneStudying = new Set(todayLogs.filter((l) => l.source === "study" && (l.result === "know" || l.result === "master")).map((l) => l.wordId));
   // 只有学习卡上的打分才算「今天学过」：列表页的已掌握 / 移出 / 重新记也写 study_log，

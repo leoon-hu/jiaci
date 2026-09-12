@@ -34,6 +34,7 @@ import path from "path";
 import { PrismaClient } from "@prisma/client";
 import { isStopword } from "../src/lib/stopwords";
 import { EXAM_TAGS, TAG_LABEL, inflectionOf, looksLikeName, parseExchange, wordCreateData } from "../src/lib/dict";
+import { bookByName } from "../src/lib/public-books";
 import { lookupDictFields } from "../src/lib/dict-db";
 import { isValidWord, normalizeWord, wordKind } from "../src/lib/words";
 import { dropInflections, isJunkShort, isPlaceholderPhrase, isProperNounLike, parseListFile, parseSupplement, preferAmerican } from "../src/lib/wordbook-rules";
@@ -177,6 +178,8 @@ async function main() {
   const ctx: Ctx = { all, bySpelling, list: (name) => { if (!listCache.has(name)) listCache.set(name, readList(name).map((w) => bySpelling.get(w)).filter((c): c is Cand => !!c && !isStopword(c.spelling))); return listCache.get(name)!; } };
   console.log(`候选词条 ${all.length}（word 表 ${rows.length}）${dry ? "，试运行不写库" : ""}`);
   const summary: string[] = [];
+  // 公开词库页按名字找 slug（lib/public-books.ts），定义里有、清单里没有的词库在 /dict 上就不可见
+  for (const def of BOOKS) if (!bookByName(def.name)) console.warn(`! 「${def.name}」没有公开页 slug：请在 src/lib/public-books.ts 里补一条`);
   for (const def of BOOKS) {
     if (only && def.name !== only) continue;
     const picked = def.pick(ctx);

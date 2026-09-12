@@ -81,11 +81,18 @@ const ACT_PROGRESS: Record<ListAct, "new" | "mastered" | "removed"> = { reset: "
 const actMessage = (act: ListAct, n: number) => n > 1
   ? `已把 ${n} 个词${act === "reset" ? "重新记" : act === "master" ? "标记为已掌握" : "移出学习"}`
   : act === "master" ? "已标记为已掌握，不再出现在学习中" : act === "remove" ? "已移出学习，状态为未加入" : "已重新记：按新词重新开始";
-type Pending = { ids: string[]; act: ListAct; rows: ListRow[]; data: ListResp | null; timer: ReturnType<typeof setTimeout> };
+/**
+ * 一批待定操作：三种状态操作走 rate-batch；「加进度」（know）一次只有一个词、走单词打分接口，
+ * clientTs 与预览时用的同一个，真正提交与预览对应得上，离线补交也不会记两次
+ */
+type Pending = { ids: string[]; act: ListAct | "know"; clientTs?: string; rows: ListRow[]; data: ListResp | null; timer: ReturnType<typeof setTimeout> };
 /** 服务端 rate-batch 单次上限 500，超过要切片提交（审计 F053） */
 const BATCH_MAX = 500;
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
-const batchBodies = (p: Pending) => chunk(p.ids, BATCH_MAX).map((ids) => ({ wordIds: ids, result: p.act, date: localToday() }));
+/** 提交一批待定操作要发的请求（提交队列与离开页面的 keepalive 共用） */
+const pendingRequests = (p: Pending): Array<{ url: string; body: unknown }> => p.act === "know"
+  ? [{ url: "/api/study/rate", body: { wordId: p.ids[0], result: "know", date: localToday(), source: "list", clientTs: p.clientTs } }]
+  : chunk(p.ids, BATCH_MAX).map((ids) => ({ url: "/api/study/rate-batch", body: { wordIds: ids, result: p.act, date: localToday() } }));
 
 /** 词库详情 / 单词列表（需求 3.3.5） */
 /**
@@ -155,10 +162,19 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
     const loaded = (dataRef.current?.nextCursor ?? from + rowsRef.current.length) - from;
     return fetchList(from, false, Math.max(PAGE, loaded));
   }, [fetchList]);
-  /** 提交一批待定操作：列表已经本地更新过，成功只刷新头部统计；失败则提示并从服务端重新同步 */
+  /**
+   * 提交一批待定操作：列表已经本地更新过，成功只刷新头部统计；失败则提示并从服务端重新同步。
+   * 「加进度」本地显示的是预览结果，真正提交时若被守卫拦下（这几秒里别的设备学过 / 改过这个词），
+   * 服务端返回 duplicate 或 skipped，与预览对不上，也从服务端重新同步这一段
+   */
   const commit = useCallback(async (p: Pending) => {
-    try { for (const body of batchBodies(p)) await api("/api/study/rate-batch", { method: "POST", json: body }); loadBook(); }
-    catch (e) { toast(`操作没有保存：${(e as Error).message}`); await refresh(); }
+    try {
+      for (const { url, body } of pendingRequests(p)) {
+        const r = await api<{ duplicate?: boolean; skipped?: string | null }>(url, { method: "POST", json: body });
+        if (p.act === "know" && (r.duplicate || r.skipped)) await refresh();
+      }
+      loadBook();
+    } catch (e) { toast(`操作没有保存：${(e as Error).message}`); await refresh(); }
   }, [refresh, loadBook, toast]);
   /**
    * 把一批待定操作交给串行提交队列：不等网络返回就返回，调用方可以立刻接着操作。
@@ -250,7 +266,7 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
     const beacon = () => {
       const p = pending.current; if (!p) return;
       clearTimeout(p.timer); pending.current = null;
-      for (const body of batchBodies(p)) fetch("/api/study/rate-batch", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "same-origin" }).catch(() => {});
+      for (const { url, body } of pendingRequests(p)) fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "same-origin" }).catch(() => {});
     };
     window.addEventListener("pagehide", beacon);
     return () => { window.removeEventListener("pagehide", beacon); beacon(); };
@@ -350,26 +366,32 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
    * 拖到「加进度」：按「认识」给这个词记一次学习。走单词打分接口而不是批量接口——
    * know 的那几条守卫（已掌握 / 已移出不被拉回、当天不重复记、旧打分不覆盖新进度）只在 rateWord 里；
    * 来源标成 list，不算进首页「今日已完成」与当天的新词配额（审计 F024）。
-   * 新的间隔要服务端算，所以这一项不走「本地先生效、5 秒后提交」那套，也就没有撤销。
+   * 新的间隔要服务端算，本地算不出来，所以先用 preview 只算不写拿到结果，按结果本地生效，
+   * 然后与其它操作一样进「5 秒内可撤销、到时才提交」的队列；提交时用同一个 clientTs 真打一次分。
    */
   async function addProgress(row: ListRow) {
-    // 先把待撤销的那批提交掉：它的快照里还是这一行的旧状态，撤销时会把新进度盖回去
+    // 上一批先落库并等它返回：里面可能就有这一行（比如刚拖过「已掌握」），预览得按落库后的状态算
+    await flush();
+    const clientTs = `list-${row.id}-${Date.now()}`;
+    let r: { progress: ProgressState; nextInterval: number; duplicate: boolean; skipped: string | null };
+    try {
+      r = await api("/api/study/rate", { method: "POST", json: { wordId: row.id, result: "know", date: localToday(), source: "list", clientTs, preview: true } });
+    } catch (e) { toast((e as Error).message); return; }
+    // 被守卫拦下的情况什么都不会写，只提示原因，没有可撤销的东西
+    if (r.skipped === "mastered" || r.skipped === "removed") {
+      toast(r.skipped === "mastered" ? "这个词已掌握，不再安排复习" : "这个词已移出学习，先用「重新记」加回来");
+      return;
+    }
+    if (r.duplicate) { toast("今天已经学过这个词了，进度不重复记"); return; }
+    // 等预览的这段时间里用户可能又拖了别的行，那批先入队再建立这一批的快照
     const prev = pending.current;
     if (prev) { pending.current = null; enqueue(prev); }
-    try {
-      const r = await api<{ progress: ProgressState; nextInterval: number; duplicate: boolean; skipped: string | null }>("/api/study/rate", {
-        method: "POST",
-        json: { wordId: row.id, result: "know", date: localToday(), source: "list", clientTs: `list-${row.id}-${Date.now()}` },
-      });
-      if (r.skipped === "mastered" || r.skipped === "removed") {
-        toast(r.skipped === "mastered" ? "这个词已掌握，不再安排复习" : "这个词已移出学习，先用「重新记」加回来");
-        return;
-      }
-      applyProgress(row.id, r.progress);
-      toast(r.duplicate ? "今天已经学过这个词了，进度不重复记"
-        : r.skipped === "stale" ? "已记入学习历史；其它设备上有更新的记录，复习安排不变"
-        : r.nextInterval > 0 ? `已记一次「认识」，${r.nextInterval} 天后再复习` : "已记一次「认识」");
-    } catch (e) { toast((e as Error).message); }
+    const snap: Pending = { ids: [row.id], act: "know", clientTs, rows: rowsRef.current, data: dataRef.current, timer: setTimeout(() => { if (pending.current === snap) { pending.current = null; enqueue(snap); } }, UNDO_MS) };
+    pending.current = snap;
+    applyProgress(row.id, r.progress);
+    toast(r.skipped === "stale" ? "已记入学习历史；其它设备上有更新的记录，复习安排不变"
+      : r.nextInterval > 0 ? `已记一次「认识」，${r.nextInterval} 天后再复习` : "已记一次「认识」",
+    { ms: UNDO_MS, action: { label: "撤销", onClick: () => undo(snap) } });
   }
   /** 打完分按服务端返回的进度刷新这一行：状态、饼图、下次复习时间，顺带调整各筛选的数量 */
   function applyProgress(id: string, p: ProgressState) {

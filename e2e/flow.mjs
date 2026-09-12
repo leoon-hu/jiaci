@@ -1,5 +1,5 @@
 /**
- * 端到端测试（Chrome 远程调试协议，无需 Playwright）：登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 长按打分 → 详情页词典兜底
+ * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 长按打分 → 详情页词典兜底
  * 不依赖任何内置词库：每次用新账号，在页面内通过接口新建「e2e 测试词库」，结束后删除。
  * 用法：npm run dev 后执行 `npm run e2e`（默认 http://localhost:3000，输出截图到 e2e/out）
  * 环境变量：BASE_URL、CHROME（Chrome 可执行文件路径）
@@ -57,6 +57,24 @@ const rect = async (sel, idx = 0) => JSON.parse(await evalJs(`(()=>{const el=doc
 const log = [];
 await send("Runtime.enable"); await send("Page.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
+
+// ---- 0. 公开词条页（匿名，直接用 fetch，不带 Cookie）----
+{
+  const get = async (path) => { const r = await fetch(BASE + path, { redirect: "manual" }); return { status: r.status, location: r.headers.get("location") ?? "", body: r.status === 200 ? await r.text() : "" }; };
+  const w = await get("/dict/abandon");
+  log.push(`公开页：/dict/abandon → ${w.status} ${w.status === 200 ? "✓" : "✗"}，标题含「是什么意思」 ${w.body.includes("是什么意思") ? "✓" : "✗"}，正文有例句块 ${w.body.includes('id="examples"') ? "✓" : "✗"}，canonical ${/rel="canonical" href="[^"]*\/dict\/abandon"/.test(w.body) ? "✓" : "✗"}，无个人数据块 ${!w.body.includes("学习记录") && !w.body.includes("我的备注") ? "✓" : "✗"}`);
+  const p = await get("/dict/give_up");
+  log.push(`公开页：短语 /dict/give_up → ${p.status} ${p.status === 200 && p.body.includes("give up") ? "✓" : "✗"}`);
+  const nf = await get("/dict/zzzzqqx");
+  log.push(`公开页：查不到的词 → ${nf.status} ${nf.status === 404 ? "✓" : "✗"}`);
+  const b = await get("/dict/book/ielts-core/2");
+  log.push(`公开页：词库第 2 页 → ${b.status} ${b.status === 200 && b.body.includes("雅思核心") ? "✓" : "✗"}；/1 归到无页码地址 ${(await get("/dict/book/ielts-core/1")).status === 308 ? "✓" : "✗"}`);
+  const r = await get("/word/give%20up");
+  log.push(`公开页：匿名访问 /word/give%20up → ${r.status} 到 ${r.location} ${r.status === 307 && r.location.endsWith("/dict/give_up") ? "✓" : "✗"}；匿名访问 /home 仍跳登录 ${(await get("/home")).location.includes("/login") ? "✓" : "✗"}`);
+  const sm = await get("/sitemap.xml");
+  const shard = await get("/sitemap/words-0.xml");
+  log.push(`公开页：sitemap 索引 ${sm.status === 200 && sm.body.includes("/sitemap/pages.xml") && sm.body.includes("/sitemap/words-0.xml") ? "✓" : "✗"}，分片有词条 ${shard.status === 200 && shard.body.includes("/dict/abandon") ? "✓" : "✗"}，robots 放行 /dict/ ${(await get("/robots.txt")).body.includes("Allow: /dict/") ? "✓" : "✗"}`);
+}
 
 // ---- 1. 登录流程 ----
 await send("Page.navigate", { url: BASE + "/login" }); await sleep(3000);

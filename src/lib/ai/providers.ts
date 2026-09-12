@@ -15,6 +15,8 @@ export const AI_PROVIDER_LABEL: Record<AiProvider, string> = { openai: "OpenAI",
 export type WordAiRow = WordAiOpenai;
 export type WordAiRelations<T = WordAiRow> = { aiOpenai?: T | null; aiDeepseek?: T | null };
 const REL: Record<AiProvider, keyof WordAiRelations> = { openai: "aiOpenai", deepseek: "aiDeepseek" };
+/** 某厂商在 Word 上的关系字段名（要按厂商拼 select 的地方用，如公开页的 sitemap 只取 generated_at） */
+export const aiRelationOf = (p: AiProvider): keyof WordAiRelations => REL[p];
 
 /** Prisma include：两家整行（运营脚本、需要全部字段的地方用；单行平均 3.3 KB，页面接口别用） */
 export const AI_INCLUDE = { aiOpenai: true, aiDeepseek: true } as const;

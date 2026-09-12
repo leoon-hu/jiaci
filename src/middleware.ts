@@ -1,9 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-/** 未登录仅可见登录页与静态页（需求 A5）：这里只检查 Cookie 是否存在，具体有效性由页面 / API 校验 */
+/** 未登录仅可见登录页、静态页与公开词条页（需求 A5）：这里只检查 Cookie 是否存在，具体有效性由页面 / API 校验 */
 const PUBLIC = [/^\/login/, /^\/legal\//, /^\/api\//, /^\/_next\//, /^\/manifest\.webmanifest$/, /^\/icons\//, /^\/favicon\.ico$/, /^\/icon\.svg$/, /^\/apple-touch-icon\.png$/, /^\/logo-wordmark\.svg$/, /^\/sw\.js$/,
   // 落地页用的截图、分享卡片图与爬虫入口
-  /^\/shots\//, /^\/og\.png$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/];
+  /^\/shots\//, /^\/og\.png$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/sitemap\//,
+  // 匿名可看的词条与词库页（供搜索引擎收录）
+  /^\/dict(\/|$)/];
 
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -22,6 +24,8 @@ export function middleware(req: NextRequest) {
     const claimed = req.headers.get("x-forwarded-host") || req.headers.get("host") || req.nextUrl.host;
     const allowed = process.env.SITE_HOST?.trim();
     const host = allowed && claimed !== allowed ? allowed : claimed;
+    // 分享出去的 /word/… 链接：没登录的人看公开词条页（URL 里空格写成下划线），页面上再引导登录
+    if (pathname.startsWith("/word/")) return NextResponse.redirect(`${proto}://${host}/dict/${pathname.slice(6).replace(/%20| /g, "_")}`);
     return NextResponse.redirect(`${proto}://${host}/login?next=${encodeURIComponent(pathname)}`);
   }
   return pass();

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { addDays, applyRating, NEW_PROGRESS, rateLabels, retrievability, DEFAULT_MASTER_INTERVAL, DEFAULT_RETENTION, type ProgressState } from "../src/lib/scheduler";
+import { addDays, applyRating, doneTodayIds, NEW_PROGRESS, rateLabels, retrievability, DEFAULT_MASTER_INTERVAL, DEFAULT_RETENTION, type ProgressState } from "../src/lib/scheduler";
 
 const T = "2026-09-05";
 /** 按到期日连续打「认识」，返回每次的间隔 */
@@ -123,6 +123,17 @@ describe("FSRS 调度", () => {
     expect(applyRating(afterReset, "fuzzy", T).progress.lapses).toBeGreaterThanOrEqual(2);
     const again = applyRating(reset.progress, "know", T).progress;
     expect(again.interval).toBe(applyRating(NEW_PROGRESS, "know", T).progress.interval);
+  });
+  it("今天学过的词按最后一条记录算：认识后又重新记的不算", () => {
+    const done = doneTodayIds([
+      { wordId: "a", result: "know" },
+      { wordId: "b", result: "know" }, { wordId: "b", result: "reset" },
+      { wordId: "c", result: "fuzzy" }, { wordId: "c", result: "know" },
+      { wordId: "d", result: "master" }, { wordId: "d", result: "remove" },
+      { wordId: "e", result: "fuzzy" },
+      { wordId: "f", result: "know" }, { wordId: "f", result: "reset" }, { wordId: "f", result: "know" },
+    ]);
+    expect([...done].sort()).toEqual(["a", "c", "f"]);
   });
   it("按钮文案与保持率", () => {
     const l = rateLabels(NEW_PROGRESS, {}, T);
