@@ -43,11 +43,14 @@ export default async function Index() {
       <main>
         <section className="land-hero">
           <h1>精简、高效地背单词</h1>
-          <p className="land-lead">内置 / 导入词库 → 每日按计划学习 → 认识 / 模糊打分 → 间隔重复安排复习。<br />免费使用，开源（MIT），仅中文界面，为海外的英语学习者而做。</p>
+          <p className="land-lead">内置 / 导入词库 → 每日按计划学习 → 认识 / 模糊打分 → 间隔重复安排复习。<br />免费使用，仅中文界面，为海外的英语学习者而做。</p>
           <div className="land-cta">
             <Link className="btn btn-primary btn-lg" href="/login">邮箱登录，开始学习</Link>
             <a className="btn btn-secondary btn-lg" href={REPO} target="_blank" rel="noopener">查看源码</a>
           </div>
+          <p className="land-open">
+            <strong>代码与数据结构全部开源（MIT）</strong>：应用源码、数据库表结构、词条字段定义、内置词库词表与离线脚本都在 <a href={REPO} target="_blank" rel="noopener">GitHub</a> 上，可以自行部署一套。
+          </p>
           <p className="small muted">无需密码，邮箱验证码登录，首次登录自动注册。所有词条与内置词库<Link href="/dict">公开可查</Link>，不用登录</p>
         </section>
 
@@ -74,7 +77,7 @@ export default async function Index() {
         <section className="land-why card">
           <h2>为什么做这个</h2>
           <p>做一个边上班边学英语背单词的好工具。试过很多背单词应用，也开过会员，总有不满意的地方，于是自己动手做了一个：只保留背单词最需要的东西，把复习交给算法，把词条资料一次做好给所有人共用。</p>
-          <p>词典数据来自 ECDICT，词表参照公开大纲与 NGSL / NAWL / AWL 整理，调度算法是 FSRS——都在 <a href={REPO} target="_blank" rel="noopener">GitHub</a> 上，欢迎自行部署或提意见。</p>
+          <p>词典数据来自 ECDICT，词表参照公开大纲与 NGSL / NAWL / AWL 整理，调度算法是 FSRS——代码与数据结构（数据库表、词条字段、词表）都以 MIT 许可放在 <a href={REPO} target="_blank" rel="noopener">GitHub</a> 上，欢迎自行部署或提意见。</p>
         </section>
       </main>
 

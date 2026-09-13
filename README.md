@@ -6,6 +6,8 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
 
 **在线使用：[jiaci.app](https://jiaci.app)**（邮箱验证码登录，免费；词条与内置词库在 [jiaci.app/dict](https://jiaci.app/dict) 公开可查，不用登录）
 
+> **代码与数据结构全部开源（[MIT](LICENSE)）。** 不只是应用源码：数据库表结构与迁移（`prisma/`）、词条 AI 字段的定义与校验契约（`src/lib/ai/schema.ts`）、内置词库的词表与选词规则（`lists/`、`src/lib/wordbook-rules.ts`），以及词典导入 / 词库构建 / AI 填充 / 发音生成的离线脚本（`scripts/`）都在这个仓库里。可以照此自行部署一套，也可以只拿数据模型与词表去做自己的东西。
+
 <p align="center">
   <img src="public/shots/home.png" width="24%" alt="今日学习">
   <img src="public/shots/study.png" width="24%" alt="学习卡片">
@@ -13,7 +15,7 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
   <img src="public/shots/wordbook.png" width="24%" alt="单词列表">
 </p>
 
-> **English** · Jiaci (AI加词) is a minimal vocabulary trainer for Chinese speakers learning English: pick a built-in or imported word list → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users; pronunciation is server-side neural TTS. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. Live at [jiaci.app](https://jiaci.app).
+> **English** · Jiaci (AI加词) is a minimal vocabulary trainer for Chinese speakers learning English: pick a built-in or imported word list → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users; pronunciation is server-side neural TTS. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. **Open source under MIT — the code *and* the data model** (database schema, word-entry field contracts, word lists, offline scripts) all live in this repo. Live at [jiaci.app](https://jiaci.app).
 
 
 ## 设计初衷
@@ -118,4 +120,4 @@ npm run wordbooks:build
 
 ## 许可
 
-[MIT](LICENSE)
+代码与数据结构均以 [MIT](LICENSE) 许可开源：应用源码、`prisma/` 下的数据库表结构与迁移、`src/lib/ai/schema.ts` 的词条字段契约、`scripts/` 下的离线脚本都可以自由使用、修改与再分发。`lists/` 下词表文件与词典数据的出处及各自的许可见上一节。

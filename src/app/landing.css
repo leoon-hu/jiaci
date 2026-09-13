@@ -8,6 +8,10 @@
 .land-hero h1{font-size:34px;font-weight:800;letter-spacing:-.5px;margin:0 0 12px}
 .land-lead{font-size:16px;color:var(--muted);max-width:640px;margin:0 auto 22px}
 .land-cta{display:flex;justify-content:center;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+/* 开源声明：放在 CTA 下面的一条醒目小框，与「无需密码」那行提示区分开 */
+.land-open{display:inline-block;max-width:640px;margin:0 auto 14px;padding:8px 14px;border:1px solid var(--border);border-radius:var(--radius-sm);background:var(--primary-soft);color:var(--text);font-size:14px;line-height:1.6;text-align:left}
+.land-open strong{color:var(--primary)}
+.land-open a{font-weight:600;text-decoration:underline}
 
 .land-shots{display:flex;gap:16px;justify-content:center;overflow-x:auto;padding:8px 0 16px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
 .land-shots figure{flex:0 0 260px;margin:0;scroll-snap-align:center}
