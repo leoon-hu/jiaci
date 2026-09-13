@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withUser, ok, readJson } from "@/lib/api";
-import { rateWordsBatch } from "@/lib/study";
+import { rateWordsBatch, scopeOfBook } from "@/lib/study";
 import { prisma } from "@/lib/db";
 import { resolveToday } from "@/lib/dates";
 
@@ -13,12 +13,15 @@ export const POST = withUser(async (req, _ctx, user) => {
     wordIds: z.array(z.string()).min(1).max(500),
     result: z.enum(["master", "reset", "remove"]),
     date: z.string().optional(),
+    // 列表页所属的词库：开了独立进度就写那一套（需求 3.3.6）
+    wordbookId: z.string().max(64).optional(),
   }).parse(await readJson(req));
   const today = resolveToday(body.date);
+  const scope = await scopeOfBook(user.id, body.wordbookId);
   // 先过滤掉不存在的 wordId，剩下的整批一个事务：撞外键会让整批回滚，只报错不留半生效状态（审计 F014）
   const ids = Array.from(new Set(body.wordIds));
   const known = (await prisma.word.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((w) => w.id);
   // 来源标成 list：这些操作不该算进首页的「今日已完成」（审计 F024）
-  const { done } = await rateWordsBatch(user.id, known, body.result, today);
+  const { done } = await rateWordsBatch(user.id, known, body.result, today, scope);
   return ok({ done, skipped: ids.length - done });
 });

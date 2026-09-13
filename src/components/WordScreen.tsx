@@ -44,13 +44,15 @@ export default function WordScreen({ mode, spelling, initial, initialError = "" 
   // 打过分才需要在关闭时通知底层页面同步（见 lib/client/word-events.ts）
   const dirty = useRef(false);
 
+  // 首屏按地址上的 ?book= 算好了词库；之后重载沿用同一本，别因为刷新一下就换回当前词库
+  const bookId = detail?.bookId ?? null;
   const load = useCallback(async () => {
     try {
-      const d = await api<Detail>(`/api/words/${encodeURIComponent(spelling)}?date=${localToday()}`);
+      const d = await api<Detail>(`/api/words/${encodeURIComponent(spelling)}?date=${localToday()}${bookId ? `&book=${bookId}` : ""}`);
       setDetail(d);
       return d;
     } catch (e) { setErr((e as Error).message); return null; }
-  }, [spelling]);
+  }, [spelling, bookId]);
 
   useEffect(() => {
     if (!detail || loading || spoke.current || !settings.autoReadDetail) return;
@@ -84,7 +86,7 @@ export default function WordScreen({ mode, spelling, initial, initialError = "" 
     if (!detail || busy) return;
     setBusy(true);
     try {
-      const res = await api<{ nextInterval: number }>("/api/study/rate", { method: "POST", json: { wordId: detail.id, result: r, date: localToday(), clientTs: `${detail.id}-${Date.now()}` } });
+      const res = await api<{ nextInterval: number }>("/api/study/rate", { method: "POST", json: { wordId: detail.id, result: r, date: localToday(), clientTs: `${detail.id}-${Date.now()}`, wordbookId: detail.bookId ?? undefined } });
       dirty.current = true;
       toast(r === "master" ? "已标记为已掌握，不再进入学习" : r === "reset" ? "已重新记：保留学习记录，按新词重新开始" : res.nextInterval === 0 ? "今日学习时再次出现" : `下次复习：${res.nextInterval} 天后`);
       await load();
@@ -97,7 +99,8 @@ export default function WordScreen({ mode, spelling, initial, initialError = "" 
       {mode === "overlay"
         ? <button type="button" className="back" onClick={close}>‹ 返回</button>
         : <BackLink href="/wordbooks">‹ 返回</BackLink>}
-      <span className="book small faint" title={detail?.bookName ?? undefined}>{detail?.bookName ? `当前词库：${detail.bookName}` : ""}</span>
+      {/* 状态与打分按哪本词库的进度：从列表点进来是那本，否则是当前学习词库；开了独立进度要标出来 */}
+      <span className="book small faint" title={detail?.bookName ?? undefined}>{detail?.bookName ? `${detail.bookIsCurrent ? "当前词库" : "词库"}：${detail.bookName}${detail.ownProgress ? "（独立进度）" : ""}` : ""}</span>
       {detail && (
         <Dropdown<AiPreference> ariaLabel="词条资料来源" value={settings.aiProvider} disabled={switching} onChange={switchProvider}
           options={[{ value: "auto", label: "自动" }, ...AI_PROVIDERS.map((p) => ({ value: p as AiPreference, label: AI_PROVIDER_LABEL[p], note: detail.aiAvailable.includes(p) ? undefined : "无资料" }))]} />

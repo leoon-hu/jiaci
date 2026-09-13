@@ -8,5 +8,5 @@ export const GET = withUser(async (req, _ctx, user) => {
   const today = resolveToday(new URL(req.url).searchParams.get("date"));
   const extra = await getConfigInt("study.extra_new_words");
   const q = await buildTodayQueue(user.id, today, { extra });
-  return ok({ today, items: q.items.filter((i) => i.kind === "new"), stats: q.stats, settings: q.settings, hasBook: q.hasBook });
+  return ok({ today, items: q.items.filter((i) => i.kind === "new"), stats: q.stats, settings: q.settings, hasBook: q.hasBook, bookId: q.bookId });
 });

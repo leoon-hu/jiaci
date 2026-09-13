@@ -2,7 +2,7 @@ import { withUser, ok, ApiError } from "@/lib/api";
 import { prisma } from "@/lib/db";
 import { candidateLemmas } from "@/lib/lemma";
 import { lookupDictFields } from "@/lib/dict-db";
-import { wordStatusFor } from "@/lib/study";
+import { scopeOfBook, wordStatusFor } from "@/lib/study";
 import { isStopword } from "@/lib/stopwords";
 import { isValidWord } from "@/lib/words";
 import { wordView, type WordView } from "@/lib/word-view";
@@ -21,7 +21,10 @@ const empty = (spelling: string, stopword = false) => ({ spelling, display: null
  * 任何登录用户都能把任意字符串写进全局 word 表（审计 F010 / F011）。
  */
 export const GET = withUser(async (req, _ctx, user) => {
-  const raw = new URL(req.url).searchParams.get("w") ?? "";
+  const u = new URL(req.url);
+  const raw = u.searchParams.get("w") ?? "";
+  // 从哪本词库的详情里点的词：状态按那本的进度作用域算；没带就按当前学习词库
+  const book = u.searchParams.get("book") || null;
   const cands = candidateLemmas(raw).filter(isValidWord);
   if (!cands.length) throw new ApiError(400, "参数不正确");
   // 按候选顺序挑，不是按字母序：数据库的 in 查询不保留顺序，token 本身必须优先于去后缀的候选（审计 F080）
@@ -31,7 +34,7 @@ export const GET = withUser(async (req, _ctx, user) => {
   const bySpelling = new Map(hits.map((h) => [h.spelling, h]));
   const found = cands.map((c) => bySpelling.get(c)).find(Boolean);
   if (found) {
-    const [st, settings] = await Promise.all([wordStatusFor(user.id, found.id), getSettings(user.id)]);
+    const [st, settings] = await Promise.all([scopeOfBook(user.id, book).then((scope) => wordStatusFor(user.id, found.id, scope)), getSettings(user.id)]);
     const picked = pickAi(found, settings.aiProvider);
     return ok(peek(found.spelling, found.display, st.status, wordView(found, picked?.row, picked?.provider ?? null)));
   }

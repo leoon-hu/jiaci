@@ -257,7 +257,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
         </div>
       </div>
 
-      <WordPeek word={peek} accent={accent} voice={settings.voice} onClose={closePeek} autoSpeak={settings.autoReadDetail} />
+      <WordPeek word={peek} book={detail.bookId} accent={accent} voice={settings.voice} onClose={closePeek} autoSpeak={settings.autoReadDetail} />
 
       <Modal open={noteOpen} onClose={() => setNoteOpen(false)}>
         <h3>我的备注</h3>

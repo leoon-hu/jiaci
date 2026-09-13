@@ -1,17 +1,21 @@
 import { DEFAULT_MASTER_INTERVAL } from "./scheduler";
 
-/** 单词状态四色（需求 1.5）：mastered 绿 / learning 黄 / new 红（已加入未开始） / none 灰（未加入） */
+/**
+ * 单词状态四色（需求 1.5）：mastered 绿 / learning 黄 / new 红（未开始） / none 灰（未加入 = 移出学习）。
+ * 状态跟着单词走、与词库无关：进度记录本来就是「用户 × 单词」，词库只是单词的子集，「当前词库」只决定哪些词进学习队列。
+ * 没有记录（或重新记后还没学）的词在任何词库里都是「未开始」——原先审计 F031 按「不在当前词库就算未加入」，
+ * 结果非当前词库的未开始永远是 0、灰色成了「没学过 + 移出」的混合，2026-09-13 撤掉。
+ */
 export type WordStatus = "mastered" | "learning" | "new" | "none";
 
 export const STATUS_LABEL: Record<WordStatus, string> = { mastered: "已掌握", learning: "学习中", new: "未开始", none: "未加入" };
 
-export function deriveStatus(args: { progressStatus?: "new" | "learning" | "mastered" | "removed" | null; inCurrentBook: boolean }): WordStatus {
+export function deriveStatus(args: { progressStatus?: "new" | "learning" | "mastered" | "removed" | null }): WordStatus {
   const s = args.progressStatus;
   if (s === "mastered") return "mastered";
   if (s === "learning") return "learning";
   if (s === "removed") return "none";
-  // status=new（重新记后）也要看是否在当前词库：不在的话它永远进不了队列，显示红色「未开始」是误导（审计 F031）
-  return args.inCurrentBook ? "new" : "none";
+  return "new";
 }
 
 /** 进度饼图填充百分比：未开始 / 未加入 0，学习中按间隔对数增长（1 天约 17%，7 天约 50%，30 天约 84%），已掌握 100 */

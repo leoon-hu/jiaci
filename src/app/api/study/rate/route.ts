@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withUser, ok, readJson } from "@/lib/api";
-import { rateWord, schedulerOptions } from "@/lib/study";
+import { rateWord, schedulerOptions, scopeOfBook } from "@/lib/study";
 import { resolveToday } from "@/lib/dates";
 import { rateLabels } from "@/lib/scheduler";
 
@@ -13,8 +13,11 @@ export const POST = withUser(async (req, _ctx, user) => {
     source: z.enum(["study", "list"]).optional(),
     // 只算不写：列表的「加进度」先拿结果本地显示、撤销期过后再真正提交（见 rateWord）
     preview: z.boolean().optional(),
+    // 打在哪本词库的进度上（需求 3.3.6 独立进度）：学习页传队列拉出来时的当前词库、列表页传这本；不传按当前学习词库
+    wordbookId: z.string().max(64).optional(),
   }).parse(await readJson(req));
   const today = resolveToday(body.date);
-  const r = await rateWord(user.id, body.wordId, body.result, today, body.clientTs, body.source ?? "study", body.preview ?? false);
+  const scope = await scopeOfBook(user.id, body.wordbookId);
+  const r = await rateWord(user.id, body.wordId, body.result, today, body.clientTs, body.source ?? "study", body.preview ?? false, scope);
   return ok({ ...r, labels: rateLabels(r.progress, await schedulerOptions(), today) });
 });

@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { buildTodayQueue, getCurrentWordbookId, totals, wordbookProgressMany } from "@/lib/study";
+import { buildTodayQueue, getCurrentWordbookId, ownProgressOf, totals, wordbookProgressMany } from "@/lib/study";
 import { DATE_COOKIE, resolveToday } from "@/lib/dates";
 import HomeClient from "./home-client";
 
@@ -22,11 +22,13 @@ export default async function HomePage() {
     getCurrentWordbookId(user.id),
   ]);
   const book = currentId ? await prisma.wordbook.findUnique({ where: { id: currentId }, select: { id: true, name: true, wordCount: true } }) : null;
-  const learned = book ? (await wordbookProgressMany(user.id, [book.id])).get(book.id)?.learned ?? 0 : 0;
+  const [learned, ownProgress] = book
+    ? await Promise.all([wordbookProgressMany(user.id, [book.id]).then((m) => m.get(book.id)?.learned ?? 0), ownProgressOf(user.id, book.id)])
+    : [0, false];
   return (
     <HomeClient
       initial={{ today, hasBook: q.hasBook, stats: q.stats, totals: t }}
-      initialBook={book ? { ...book, learned, isCurrent: true } : null}
+      initialBook={book ? { ...book, learned, isCurrent: true, ownProgress } : null}
     />
   );
 }

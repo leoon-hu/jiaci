@@ -210,7 +210,53 @@ const sheetClosed = await waitFor("!document.querySelector('.word-sheet')", 5000
 const keptY = await evalJs("window.scrollY"), keptRows = await evalJs("document.querySelectorAll('.srow').length");
 const kept = await evalJs("window.__mark===1 && window.__list===document.querySelector('.list')");
 log.push(`详情浮层：返回 → 关闭 ${sheetClosed ? "✓" : "✗"}，列表没重新加载 ${kept ? "✓" : "✗"}，滚动位置 ${sheetY}→${keptY} ${Math.abs(sheetY - keptY) < 4 ? "✓" : "✗"}，行数 ${sheetRows}→${keptRows} ${sheetRows === keptRows ? "✓" : "✗"}`);
+// ---- 3d. 遮罩模式：整行点击都是揭开遮罩（含单词上下贴行边界的留白），只有行尾箭头进详情 ----
+await evalJs("[...document.querySelectorAll('.seg button')].find(b=>b.textContent==='隐藏释义')?.click()"); await sleep(400);
+{
+  const r6 = await rowRect(5);
+  const wordX = (await rect(".s-content .word", 5))?.x + 8;
+  await mouse("mousePressed", wordX, r6.y + 2); await mouse("mouseReleased", wordX, r6.y + 2); await sleep(500);
+  const revealedTop = await evalJs("document.querySelectorAll('.srow')[5]?.classList.contains('revealed')");
+  const noSheetTop = !(await evalJs("document.querySelector('.word-sheet')")) && (await evalJs("location.pathname")).startsWith("/wordbooks/");
+  await mouse("mousePressed", wordX, r6.y + r6.h - 2); await mouse("mouseReleased", wordX, r6.y + r6.h - 2); await sleep(500);
+  const maskedAgain = await evalJs("!document.querySelectorAll('.srow')[5]?.classList.contains('revealed')");
+  const noSheetBottom = !(await evalJs("document.querySelector('.word-sheet')"));
+  log.push(`遮罩模式：点单词上方贴行边界处 → 揭开 ${revealedTop ? "✓" : "✗"}、没进详情 ${noSheetTop ? "✓" : "✗"}；点下方贴行边界处 → 重新遮起 ${maskedAgain ? "✓" : "✗"}、没进详情 ${noSheetBottom ? "✓" : "✗"}`);
+  const chev = await rect(".s-content .chev", 5);
+  await mouse("mousePressed", chev.x + chev.w / 2, chev.y + chev.h / 2); await mouse("mouseReleased", chev.x + chev.w / 2, chev.y + chev.h / 2);
+  const chevOpen = await waitFor("document.querySelector('.word-sheet')", 10000); await sleep(400);
+  log.push(`遮罩模式：点行尾箭头 → 进详情 ${chevOpen ? "✓" : "✗"}`);
+  await evalJs("document.querySelector('.word-sheet .back')?.click()"); await waitFor("!document.querySelector('.word-sheet')", 5000); await sleep(400);
+  await evalJs("[...document.querySelectorAll('.seg button')].find(b=>b.textContent==='英文 + 释义')?.click()"); await sleep(400);
+}
 
+// ---- 3e. 独立进度（需求 3.3.6）：切到独立进度后四色从零起，操作只记在这本；切回全局原样恢复，再切回独立也还在 ----
+const chipCounts = async () => JSON.parse(await evalJs("JSON.stringify([...document.querySelectorAll('.chips .chip .cnt')].map(e=>Number(e.textContent)))"));
+const scopeBtn = () => evalJs("[...document.querySelectorAll('.head-card ~ .btn-row button, .section .btn-row button')].find(b=>/进度$/.test(b.textContent))?.click()");
+const confirmScope = async () => { await sleep(300); await evalJs("[...document.querySelectorAll('.modal .actions button')].find(b=>/进度$/.test(b.textContent))?.click()"); await waitFor("!document.querySelector('.modal')", 8000); await sleep(1200); };
+{
+  const before = await chipCounts();
+  await scopeBtn(); await confirmScope();
+  const own = await chipCounts();
+  const tagOn = await evalJs("!!document.querySelector('.head-card .tag-own')");
+  const total = before[0];
+  log.push(`独立进度：切换前 ${before.slice(1).join("/")}（全部 ${total}）→ 改用独立进度后 ${own.slice(1).join("/")} ${own[1] === total && own[2] === 0 && own[3] === 0 && own[4] === 0 ? "✓" : "✗"}；标签「独立进度」 ${tagOn ? "✓" : "✗"}`);
+  // 在独立进度里把第 1 行标已掌握，等提交后刷新还在
+  const r1 = await rowRect(0);
+  await mouse("mousePressed", r1.x + r1.w / 2, r1.y + r1.h / 2); await sleep(700); await mouse("mouseReleased", r1.x + r1.w / 2, r1.y + r1.h / 2); await sleep(400);
+  await evalJs("document.querySelector('.sel-bar .act-master')?.click()"); await sleep(6500);
+  await send("Page.reload"); await sleep(3000);
+  const ownAfter = await chipCounts();
+  log.push(`独立进度：第 1 行标已掌握并刷新 → ${ownAfter.slice(1).join("/")} ${ownAfter[3] === 1 && ownAfter[1] === total - 1 ? "✓" : "✗"}`);
+  await scopeBtn(); await confirmScope();
+  const back = await chipCounts();
+  const tagOff = await evalJs("!document.querySelector('.head-card .tag-own')");
+  log.push(`独立进度：改回全局进度 → ${back.slice(1).join("/")} 与切换前一致 ${JSON.stringify(back) === JSON.stringify(before) ? "✓" : "✗"}；标签消失 ${tagOff ? "✓" : "✗"}`);
+  await scopeBtn(); await confirmScope();
+  const again = await chipCounts();
+  log.push(`独立进度：再切回独立进度 → ${again.slice(1).join("/")} 独立那套还在 ${JSON.stringify(again) === JSON.stringify(ownAfter) ? "✓" : "✗"}`);
+  await scopeBtn(); await confirmScope();
+}
 // ---- 3b. 内置词库：滚动到底自动加载下一批；排序加「按词频」 ----
 await send("Page.navigate", { url: BASE + "/wordbooks" }); await sleep(3000);
 await evalJs("[...document.querySelectorAll('.books-tabs .tab')].find(t=>t.textContent.startsWith('内置词库'))?.click()"); await sleep(500);

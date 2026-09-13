@@ -14,7 +14,7 @@
   --header-h:48px; --tab-h:52px;
   /* 吸顶元素（Tab 栏）要让开的高度：带顶栏的页面是顶栏高度，学习页在 study.css 里覆盖 */
   --sticky-top:var(--header-h);
-  /* 单词状态四色：绿 已掌握 / 黄 学习中 / 红 已加入未开始 / 灰 未加入学习 */
+  /* 单词状态四色：绿 已掌握 / 黄 学习中 / 红 未开始 / 灰 未加入学习（移出） */
   --st-green:#16a34a; --st-green-soft:#dcfce7; --st-yellow:#b45309; --st-yellow-soft:#fef3c7;
   --st-red:#dc2626; --st-red-soft:#fee2e2; --st-grey:#6b7280; --st-grey-soft:#eef0f3;
   color-scheme:light;
@@ -175,6 +175,8 @@ p{margin:0 0 10px}
 .tag-import{background:var(--warn-soft);color:var(--warn)}
 .tag-custom{background:var(--ok-soft);color:var(--ok)}
 .tag-current{background:var(--ok);color:#fff}
+/* 词库开了「独立进度」：与「学习中」并排时要能一眼分开，用主色描边不填底 */
+.tag-own{background:transparent;color:var(--primary);border:1px solid var(--primary)}
 .tag-danger{background:var(--danger-soft);color:var(--danger)}
 
 /* ---------- 进度条 ---------- */

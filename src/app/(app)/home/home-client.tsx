@@ -11,7 +11,7 @@ type Today = {
   stats: { newCount: number; reviewCount: number; doneToday: number; reviewDeferred: number; newRemaining: number };
   totals: { learned: number; mastered: number };
 };
-type Book = { id: string; name: string; wordCount: number; learned: number; isCurrent: boolean };
+type Book = { id: string; name: string; wordCount: number; learned: number; isCurrent: boolean; ownProgress: boolean };
 
 /**
  * 学习首页（需求 3.2.1）。数据由 page.tsx 在服务端算好传进来，首屏直接有内容，不必等
@@ -57,7 +57,7 @@ export default function HomeClient({ initial, initialBook }: { initial: Today; i
             <div className="section">
               <div className="book-pick">
                 <div className="cover">{coverText(book.name)}</div>
-                <div className="grow"><div className="small muted">当前词库</div><div style={{ fontWeight: 700, fontSize: 17 }}>{book.name}</div></div>
+                <div className="grow"><div className="small muted">当前词库{book.ownProgress && <span className="tag tag-own" style={{ marginLeft: 8 }} title="这本词库用自己的一套进度">独立进度</span>}</div><div style={{ fontWeight: 700, fontSize: 17 }}>{book.name}</div></div>
                 <Link className="btn btn-secondary btn-sm" href="/wordbooks">切换</Link>
               </div>
               <div className="progress thin mt-12"><i style={{ width: `${book.wordCount ? (book.learned / book.wordCount) * 100 : 0}%` }} /></div>

@@ -72,13 +72,13 @@ describe("单字母 token", () => {
 
 describe("状态与饼图", () => {
   it("四色判定", () => {
-    expect(deriveStatus({ progressStatus: null, inCurrentBook: true })).toBe("new");
-    expect(deriveStatus({ progressStatus: null, inCurrentBook: false })).toBe("none");
-    expect(deriveStatus({ progressStatus: "removed", inCurrentBook: true })).toBe("none");
-    expect(deriveStatus({ progressStatus: "learning", inCurrentBook: false })).toBe("learning");
-    // 「重新记」后的词若不在当前词库，永远进不了队列，不该显示成红色「未开始」（审计 F031）
-    expect(deriveStatus({ progressStatus: "new", inCurrentBook: true })).toBe("new");
-    expect(deriveStatus({ progressStatus: "new", inCurrentBook: false })).toBe("none");
+    // 状态跟着单词走：没有记录就是未开始，不看在不在当前词库
+    expect(deriveStatus({ progressStatus: null })).toBe("new");
+    expect(deriveStatus({ progressStatus: "removed" })).toBe("none");
+    expect(deriveStatus({ progressStatus: "learning" })).toBe("learning");
+    // 「重新记」后 status=new，同样算未开始
+    expect(deriveStatus({ progressStatus: "new" })).toBe("new");
+    expect(deriveStatus({ progressStatus: "mastered" })).toBe("mastered");
   });
   it("饼图进度：学习中按间隔对数增长，已掌握 100", () => {
     expect(pieProgress("mastered", 60)).toBe(100);

@@ -16,7 +16,7 @@ import type { RateResult } from "@/lib/scheduler";
 import "./study.css";
 
 type Item = { wordId: string; spelling: string; display?: string | null; kind: "review" | "new"; phonetic: { us: string; uk: string } | null; examples: string[] };
-type TodayResp = { items: Item[]; stats: { newCount: number; reviewCount: number }; hasBook: boolean };
+type TodayResp = { items: Item[]; stats: { newCount: number; reviewCount: number }; hasBook: boolean; bookId: string | null };
 const RESULT_TAG: Record<string, [string, string]> = { know: ["tag-result-know", "认识"], fuzzy: ["tag-review", "模糊"], master: ["tag-result-master", "已掌握"], reset: ["tag-result-reset", "重新记"], remove: ["tag-none", "移出"] };
 /** 离线暂存的打分按用户分开存 localStorage：同一设备换账号后，不把上一个账号的打分补交到新账号 */
 const pendingKey = (userId: string) => `aiword.pendingRates.${userId}`;
@@ -50,10 +50,12 @@ function Study() {
   const curRef = useRef(cur);
   curRef.current = cur;
 
+  // 队列拉出来时的当前词库：打分与答案页的详情都按它的进度作用域算（需求 3.3.6 独立进度）
+  const bookRef = useRef<string | null>(null);
   const fetchDetail = useCallback(async (spelling: string) => {
     const hit = cache.current.get(spelling);
     if (hit) return hit;
-    const d = await api<Detail>(`/api/words/${encodeURIComponent(spelling)}?date=${localToday()}`);
+    const d = await api<Detail>(`/api/words/${encodeURIComponent(spelling)}?date=${localToday()}${bookRef.current ? `&book=${bookRef.current}` : ""}`);
     cache.current.set(spelling, d);
     return d;
   }, []);
@@ -85,6 +87,7 @@ function Study() {
     if (!replayed) return;
     api<TodayResp>(`${extra ? "/api/study/extra" : "/api/study/today"}?date=${localToday()}`).then((r) => {
       if (!r.hasBook) { setStatus("nobook"); return; }
+      bookRef.current = r.bookId;
       if (!r.items.length) { setStatus("empty"); return; }
       setQueue(r.items); setTotal(r.items.length); setStatus("ready");
       counts.current.newN = r.items.filter((i) => i.kind === "new").length; counts.current.reviewN = r.items.length - counts.current.newN;
@@ -167,7 +170,8 @@ function Study() {
   const rate = useCallback(async (r: RateResult) => {
     if (screen !== "answer" || !cur || busy) return;
     setBusy(true);
-    const body = { wordId: cur.wordId, result: r, date: localToday(), clientTs: `${cur.wordId}-${Date.now()}` };
+    // 带上词库：离线补交时当前词库可能已经换了，打分要落在这条队列所属的那本上
+    const body = { wordId: cur.wordId, result: r, date: localToday(), clientTs: `${cur.wordId}-${Date.now()}`, wordbookId: bookRef.current ?? undefined };
     counts.current.all++; if (r === "know" || r === "master") counts.current.know++;
     let requeue = false;
     try {

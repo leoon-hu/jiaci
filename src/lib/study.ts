@@ -35,16 +35,39 @@ export async function schedulerOptions(): Promise<SchedulerOptions> {
   return { retention: retention > 0 && retention < 1 ? retention : undefined, masterInterval: master > 0 ? master : undefined, w };
 }
 
-/** 单词在当前用户视角下的状态 */
-export async function wordStatusFor(userId: string, wordId: string): Promise<{ status: WordStatus; progress: ProgressState; inCurrentBook: boolean }> {
-  const bookId = await getCurrentWordbookId(userId);
-  const [p, member] = await Promise.all([
-    prisma.userWordProgress.findUnique({ where: { userId_wordId: { userId, wordId } } }),
-    bookId ? prisma.wordbookWord.findUnique({ where: { wordbookId_wordId: { wordbookId: bookId, wordId } } }) : null,
-  ]);
-  const progress = toProgressState(p);
-  const inCurrentBook = !!member;
-  return { status: deriveStatus({ progressStatus: p?.status ?? null, inCurrentBook }), progress, inCurrentBook };
+/** ---------- 进度作用域（需求 3.3.6「独立进度」） ---------- */
+
+/** 进度作用域：空串 = 全局进度（默认）；否则 = 开了「独立进度」的词库 id。user_word_progress / study_log 的 scope 列就是它 */
+export type Scope = string;
+export const GLOBAL_SCOPE: Scope = "";
+
+/** 这本词库是否开了独立进度（没有设置行 = 没开） */
+export async function ownProgressOf(userId: string, wordbookId: string): Promise<boolean> {
+  const s = await prisma.userWordbookSetting.findUnique({ where: { userId_wordbookId: { userId, wordbookId } }, select: { ownProgress: true } });
+  return s?.ownProgress ?? false;
+}
+
+/** 用户开了独立进度的词库 id 集合（词库列表一次取，不逐本查） */
+export async function ownProgressBooks(userId: string): Promise<Set<string>> {
+  const rows = await prisma.userWordbookSetting.findMany({ where: { userId, ownProgress: true }, select: { wordbookId: true } });
+  return new Set(rows.map((r) => r.wordbookId));
+}
+
+/**
+ * 一本词库的进度作用域：开了独立进度就是它自己的 id，否则全局。
+ * 不传词库（详情页直接打开、点词小框、学习页）按当前学习词库算；没有当前词库就是全局。
+ * 只查设置行，不校验词库可见性：别人的词库上不可能有这个用户的设置行，查出来自然是全局
+ */
+export async function scopeOfBook(userId: string, wordbookId?: string | null): Promise<Scope> {
+  const id = wordbookId ?? await getCurrentWordbookId(userId);
+  if (!id) return GLOBAL_SCOPE;
+  return (await ownProgressOf(userId, id)) ? id : GLOBAL_SCOPE;
+}
+
+/** 单词在当前用户视角下的状态：只看该作用域里的进度记录，与词库无关 */
+export async function wordStatusFor(userId: string, wordId: string, scope: Scope): Promise<{ status: WordStatus; progress: ProgressState }> {
+  const p = await prisma.userWordProgress.findUnique({ where: { userId_wordId_scope: { userId, wordId, scope } } });
+  return { status: deriveStatus({ progressStatus: p?.status ?? null }), progress: toProgressState(p) };
 }
 
 /** ---------- 单词详情（3.2.5） ---------- */
@@ -60,7 +83,13 @@ export type WordDetail = {
   status: WordStatus; progress: ProgressState; labels: { know: string; fuzzy: string };
   note: string | null;
   history: Array<{ d: string; r: RateResult; i: number }>;
+  /** 状态与学习记录按哪本词库的进度算：从列表点进来是那本，否则是当前学习词库；打分时原样传回 */
+  bookId: string | null;
   bookName: string | null;
+  /** 那本就是当前学习词库（顶部标「当前词库」还是「词库」） */
+  bookIsCurrent: boolean;
+  /** 那本词库是否开了独立进度（顶部要标出来，免得把两套进度看混） */
+  ownProgress: boolean;
 };
 
 /** 洗牌（Fisher-Yates）：详情页的例句每次进入都换个顺序，自动朗读读到的那一条也就跟着变 */
@@ -70,16 +99,23 @@ function shuffled<T>(xs: readonly T[]): T[] {
   return a;
 }
 
-/** 详情：按用户设置的资料来源取该词的 AI 行（word_ai_*），没有就词典兜底 */
-export async function buildWordDetail(userId: string, word: DictPart & { id: string; spelling: string; display?: string | null; frq?: number | null; bnc?: number | null; collins?: number | null; oxford?: boolean; tags?: string[] }, today?: string): Promise<WordDetail> {
+/**
+ * 详情：按用户设置的资料来源取该词的 AI 行（word_ai_*），没有就词典兜底。
+ * `bookId` 是「从哪本词库点进来的」：状态、学习记录、打分按钮都按那本的进度作用域算；不传按当前学习词库
+ */
+export async function buildWordDetail(userId: string, word: DictPart & { id: string; spelling: string; display?: string | null; frq?: number | null; bnc?: number | null; collins?: number | null; oxford?: boolean; tags?: string[] }, today?: string, bookId?: string | null): Promise<WordDetail> {
   // 设置先取（走请求级缓存，不查库）：知道要看哪家，才能只取那一家的整行
   const settings = await getSettings(userId);
   const primary: AiProvider = settings.aiProvider === "auto" ? AI_PROVIDERS[0] : settings.aiProvider;
-  const [st, note, logs, bookId, ai] = await Promise.all([
-    wordStatusFor(userId, word.id),
+  // 传进来的词库要是用户看不到的（乱拼的 id），当没传处理，退回当前学习词库
+  const ctxBook = bookId ? await prisma.wordbook.findFirst({ where: { id: bookId, OR: [{ type: "builtin" }, { ownerId: userId }] }, select: { id: true } }) : null;
+  const currentId = await getCurrentWordbookId(userId);
+  const useBookId = ctxBook?.id ?? currentId;
+  const scope = await scopeOfBook(userId, useBookId);
+  const [st, note, logs, ai] = await Promise.all([
+    wordStatusFor(userId, word.id, scope),
     prisma.userWordNote.findUnique({ where: { userId_wordId: { userId, wordId: word.id } } }),
-    prisma.studyLog.findMany({ where: { userId, wordId: word.id }, orderBy: [{ studyDate: "asc" }, { studiedAt: "asc" }], take: 200 }),
-    getCurrentWordbookId(userId),
+    prisma.studyLog.findMany({ where: { userId, wordId: word.id, scope }, orderBy: [{ studyDate: "asc" }, { studiedAt: "asc" }], take: 200 }),
     prisma.word.findUnique({ where: { id: word.id }, select: aiDetailSelect(primary) }),
   ]);
   const aiAvailable = ai ? aiProvidersWithData(ai) : [];
@@ -91,7 +127,7 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     const full = await prisma.word.findUnique({ where: { id: word.id }, select: aiDetailSelect(provider) });
     row = full ? aiRowOf(full, provider) : null;
   }
-  const book = bookId ? await prisma.wordbook.findUnique({ where: { id: bookId }, select: { name: true } }) : null;
+  const book = useBookId ? await prisma.wordbook.findUnique({ where: { id: useBookId }, select: { name: true } }) : null;
   const view = wordView(word, isFullAiRow(row) ? row : null, provider);
   // 例句每次请求随机排序：自动朗读只读第一条，换个顺序就等于换一条例句（需求 3.2.5）
   view.examples = shuffled(view.examples);
@@ -103,7 +139,7 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     status: st.status, progress: st.progress, labels: rateLabels(st.progress, await schedulerOptions(), today),
     note: note?.note ?? null,
     history: logs.map((l) => ({ d: fromDate(l.studyDate)!, r: l.result, i: l.nextInterval })),
-    bookName: book?.name ?? null,
+    bookId: useBookId, bookName: book?.name ?? null, bookIsCurrent: !!useBookId && useBookId === currentId, ownProgress: scope !== GLOBAL_SCOPE,
   };
 }
 
@@ -117,23 +153,24 @@ export type RateOutcome = Awaited<ReturnType<typeof rateWord>>;
  * clientTs 幂等也是先查后插，并发时后到的那条撞唯一键变成 500（审计 F175）。
  * preview = true 时只算不写：守卫、调度都照常走，返回值与真打分一模一样，但进度与学习记录都不落库——
  * 单词列表的「加进度」靠它先拿到结果本地显示，撤销期过后再用同一个 clientTs 真正提交。
+ * scope 是进度作用域（见 scopeOfBook）：读写哪一套进度、守卫看哪一套记录，都只在这个作用域里
  */
-export async function rateWord(userId: string, wordId: string, result: RateResult, today: string, clientTs?: string, source: StudySource = "study", preview = false) {
+export async function rateWord(userId: string, wordId: string, result: RateResult, today: string, clientTs?: string, source: StudySource = "study", preview = false, scope: Scope = GLOBAL_SCOPE) {
   const opts = await schedulerOptions();
   // 「今天」一律按客户端本地日期存的 study_date 算，不用服务器 UTC 时刻（审计 F035）
   const studyDate = toDate(today)!;
   try {
     return await prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${wordId}`}))`;
-      // 幂等：同一 clientTs 重复提交直接返回当前进度
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${userId}:${wordId}:${scope}`}))`;
+      // 幂等：同一 clientTs 重复提交直接返回当前进度（幂等键按用户唯一，不分作用域；重复提交的作用域与原来一致）
       if (clientTs) {
         const dup = await tx.studyLog.findUnique({ where: { userId_clientTs: { userId, clientTs } } });
         if (dup) {
-          const p = await tx.userWordProgress.findUnique({ where: { userId_wordId: { userId, wordId } } });
+          const p = await tx.userWordProgress.findUnique({ where: { userId_wordId_scope: { userId, wordId, scope: dup.scope } } });
           return { progress: toProgressState(p), nextInterval: dup.nextInterval, requeueToday: dup.nextInterval === 0 && (dup.result === "fuzzy" || dup.result === "reset"), duplicate: true, skipped: null as string | null };
         }
       }
-      const existing = await tx.userWordProgress.findUnique({ where: { userId_wordId: { userId, wordId } } });
+      const existing = await tx.userWordProgress.findUnique({ where: { userId_wordId_scope: { userId, wordId, scope } } });
       // 已移出 / 已掌握的词不能被一张过期的队列用「认识 / 模糊」悄悄拉回学习中（审计 F176）
       if ((result === "know" || result === "fuzzy") && (existing?.status === "removed" || existing?.status === "mastered")) {
         return { progress: toProgressState(existing), nextInterval: -1, requeueToday: false, duplicate: false, skipped: existing.status as string | null };
@@ -142,7 +179,7 @@ export async function rateWord(userId: string, wordId: string, result: RateResul
       // 只看今天最后一条记录：认识之后又「重新记」的词已经清成新卡，再打认识要照常记——
       // 原来只要今天有过一条认识就拦，重新记后的词在列表里是「未开始」，拖到「加进度」却被告知今天学过
       if (result === "know") {
-        const last = await tx.studyLog.findFirst({ where: { userId, wordId, studyDate }, orderBy: { studiedAt: "desc" }, select: { result: true, nextInterval: true } });
+        const last = await tx.studyLog.findFirst({ where: { userId, wordId, studyDate, scope }, orderBy: { studiedAt: "desc" }, select: { result: true, nextInterval: true } });
         if (last && isDone(last.result)) {
           return { progress: toProgressState(existing), nextInterval: last.nextInterval, requeueToday: false, duplicate: true, skipped: null as string | null };
         }
@@ -150,15 +187,15 @@ export async function rateWord(userId: string, wordId: string, result: RateResul
       // 补交上来的旧打分不能把更新的进度改回去：另一台设备已经在更晚的日期学过这个词了（审计 NU02）
       const lastReview = fromDate(existing?.lastReview ?? null);
       if ((result === "know" || result === "fuzzy") && lastReview && lastReview > today) {
-        if (!preview) await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: existing?.interval ?? 0, clientTs: clientTs ?? null, studyDate, source } });
+        if (!preview) await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: existing?.interval ?? 0, clientTs: clientTs ?? null, studyDate, source, scope } });
         return { progress: toProgressState(existing), nextInterval: existing?.interval ?? 0, requeueToday: false, duplicate: false, skipped: "stale" as string | null };
       }
       const outcome = applyRating(toProgressState(existing), result, today, opts);
       const p = outcome.progress;
       if (!preview) {
         const fields = { interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: toDate(p.dueDate), lastReview: toDate(p.lastReview) };
-        await tx.userWordProgress.upsert({ where: { userId_wordId: { userId, wordId } }, create: { userId, wordId, ...fields }, update: fields });
-        await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: outcome.nextInterval, clientTs: clientTs ?? null, studyDate, source } });
+        await tx.userWordProgress.upsert({ where: { userId_wordId_scope: { userId, wordId, scope } }, create: { userId, wordId, scope, ...fields }, update: fields });
+        await tx.studyLog.create({ data: { userId, wordId, result, nextInterval: outcome.nextInterval, clientTs: clientTs ?? null, studyDate, source, scope } });
       }
       return { progress: p, nextInterval: outcome.nextInterval, requeueToday: outcome.requeueToday, duplicate: false, skipped: null as string | null };
     });
@@ -179,26 +216,26 @@ export async function rateWord(userId: string, wordId: string, result: RateResul
  * 三种结果都不经过 know / fuzzy 的那些守卫（F176 已移出/已掌握保护、NU06 当天重复、NU02 旧打分），
  * 那些判断在 rateWord 里本来就只对 know / fuzzy 生效。
  */
-export async function rateWordsBatch(userId: string, wordIds: string[], result: Extract<RateResult, "master" | "reset" | "remove">, today: string) {
+export async function rateWordsBatch(userId: string, wordIds: string[], result: Extract<RateResult, "master" | "reset" | "remove">, today: string, scope: Scope = GLOBAL_SCOPE) {
   const ids = Array.from(new Set(wordIds)).sort();
   if (!ids.length) return { done: 0 };
   const opts = await schedulerOptions();
   const studyDate = toDate(today)!;
   try {
     return await prisma.$transaction(async (tx) => {
-      // 锁的粒度与单词打分保持一致（按用户 + 词），否则批量与单词打分并发时锁不到同一把（审计 F175）。
+      // 锁的粒度与单词打分保持一致（按用户 + 词 + 作用域），否则批量与单词打分并发时锁不到同一把（审计 F175）。
       // 排序后一次性获取，避免两个批量互相等对方的锁
-      const keys = ids.map((w) => `${userId}:${w}`);
+      const keys = ids.map((w) => `${userId}:${w}:${scope}`);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(k)) FROM unnest(${keys}::text[]) AS t(k)`;
-      const existing = await tx.userWordProgress.findMany({ where: { userId, wordId: { in: ids } } });
+      const existing = await tx.userWordProgress.findMany({ where: { userId, wordId: { in: ids }, scope } });
       const byId = new Map(existing.map((p) => [p.wordId, p]));
       const logs: Prisma.StudyLogCreateManyInput[] = [];
       for (const wordId of ids) {
         const outcome = applyRating(toProgressState(byId.get(wordId) ?? null), result, today, opts);
         const p = outcome.progress;
         const fields = { interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: toDate(p.dueDate), lastReview: toDate(p.lastReview) };
-        await tx.userWordProgress.upsert({ where: { userId_wordId: { userId, wordId } }, create: { userId, wordId, ...fields }, update: fields });
-        logs.push({ userId, wordId, result, nextInterval: outcome.nextInterval, studyDate, source: "list" });
+        await tx.userWordProgress.upsert({ where: { userId_wordId_scope: { userId, wordId, scope } }, create: { userId, wordId, scope, ...fields }, update: fields });
+        logs.push({ userId, wordId, result, nextInterval: outcome.nextInterval, studyDate, source: "list", scope });
       }
       await tx.studyLog.createMany({ data: logs });
       return { done: ids.length };
@@ -237,9 +274,11 @@ const QUEUE_EXAMPLES = 4;
 export async function buildTodayQueue(userId: string, today: string, opts: { extra?: number; statsOnly?: boolean } = {}) {
   const settings = await getSettings(userId);
   const bookId = await getCurrentWordbookId(userId);
+  // 队列、到期复习、今日统计都只看当前词库的进度作用域：开了独立进度的词库不会把全局进度里到期的词混进来
+  const scope = await scopeOfBook(userId, bookId);
   // 今天 = study_date 等于客户端本地日期；用服务器 UTC 时刻切会让时区不同的用户错开一天（审计 F035）
   const studyDate = toDate(today)!;
-  const todayLogs = await prisma.studyLog.findMany({ where: { userId, studyDate }, orderBy: { studiedAt: "asc" }, select: { wordId: true, result: true, source: true } });
+  const todayLogs = await prisma.studyLog.findMany({ where: { userId, studyDate, scope }, orderBy: { studiedAt: "asc" }, select: { wordId: true, result: true, source: true } });
   // 队列排除：今天已经打过认识 / 已掌握的词都不再出现（不论来源）；
   // 按每个词今天最后一条记录算，与 rateWord 的守卫一致——认识之后又「重新记」的词按新词重新进队列
   const doneToday = doneTodayIds(todayLogs);
@@ -250,13 +289,13 @@ export async function buildTodayQueue(userId: string, today: string, opts: { ext
   const startedToday = new Set(todayLogs.filter((l) => l.source === "study" && (l.result === "know" || l.result === "fuzzy")).map((l) => l.wordId));
 
   // 复习：到期 learning 词，按 due 升序，受每日复习上限
-  const dueWhere = Prisma.validator<Prisma.UserWordProgressWhereInput>()({ userId, status: "learning", dueDate: { lte: toDate(today)! }, wordId: { notIn: Array.from(doneToday) } });
+  const dueWhere = Prisma.validator<Prisma.UserWordProgressWhereInput>()({ userId, scope, status: "learning", dueDate: { lte: toDate(today)! }, wordId: { notIn: Array.from(doneToday) } });
   const reviewsRaw = opts.statsOnly ? [] : await prisma.userWordProgress.findMany({
     where: dueWhere,
     orderBy: { dueDate: "asc" }, take: settings.reviewLimit, include: { word: { include: AI_CARD_SELECT } },
   });
   const reviewCount = opts.statsOnly ? Math.min(settings.reviewLimit, await prisma.userWordProgress.count({ where: dueWhere })) : reviewsRaw.length;
-  const reviewDeferred = await prisma.userWordProgress.count({ where: { userId, status: "learning", dueDate: { lte: toDate(today)! } } }) - reviewCount;
+  const reviewDeferred = await prisma.userWordProgress.count({ where: { userId, scope, status: "learning", dueDate: { lte: toDate(today)! } } }) - reviewCount;
 
   // 新词：当前词库中无 progress 的词（或 status=new，如重新记后），按 sort_order / 随机，补足配额
   let newsRaw: Array<{ wordId: string; word: DictPart & WordAiRelations<AiCardRow> & { spelling: string; display: string | null } }> = [];
@@ -268,11 +307,11 @@ export async function buildTodayQueue(userId: string, today: string, opts: { ext
     // 今天首次学习的词（今天有记录、今天之前没有记录）占用新词配额
     let startedNewToday = 0;
     if (!opts.extra && startedToday.size) {
-      const earlier = await prisma.studyLog.findMany({ where: { userId, wordId: { in: Array.from(startedToday) }, source: "study", result: { in: ["know", "fuzzy"] }, studyDate: { lt: studyDate } }, distinct: ["wordId"], select: { wordId: true } });
+      const earlier = await prisma.studyLog.findMany({ where: { userId, scope, wordId: { in: Array.from(startedToday) }, source: "study", result: { in: ["know", "fuzzy"] }, studyDate: { lt: studyDate } }, distinct: ["wordId"], select: { wordId: true } });
       startedNewToday = startedToday.size - earlier.length;
     }
     const need = Math.max(0, quota - startedNewToday);
-    const memberWhere = Prisma.validator<Prisma.WordbookWordWhereInput>()({ wordbookId: bookId, word: { progress: { none: { userId, status: { in: ["learning", "mastered", "removed"] } } } } });
+    const memberWhere = Prisma.validator<Prisma.WordbookWordWhereInput>()({ wordbookId: bookId, word: { progress: { none: { userId, scope, status: { in: ["learning", "mastered", "removed"] } } } } });
     let pickedIds: string[];
     if (opts.statsOnly) {
       // 只要条数：候选数就是 newRemaining——今天学过的词状态已经变成 learning / mastered，
@@ -316,14 +355,17 @@ export async function buildTodayQueue(userId: string, today: string, opts: { ext
     stats: { newCount, reviewCount, doneToday: doneStudying.size, reviewDeferred, newRemaining, startedToday: startedToday.size },
     settings,
     hasBook: !!bookId,
+    // 打分时原样传回：离线补交时当前词库可能已经换了，打分要落在队列拉出来时的那本上
+    bookId,
   };
 }
 
-/** 首页数字：累计已学 / 已掌握 */
+/** 首页数字：累计已学 / 已掌握——按当前词库的进度作用域算（开了独立进度就只数那本自己的） */
 export async function totals(userId: string) {
+  const scope = await scopeOfBook(userId);
   const [learned, mastered] = await Promise.all([
-    prisma.userWordProgress.count({ where: { userId, status: { in: ["learning", "mastered"] } } }),
-    prisma.userWordProgress.count({ where: { userId, status: "mastered" } }),
+    prisma.userWordProgress.count({ where: { userId, scope, status: { in: ["learning", "mastered"] } } }),
+    prisma.userWordProgress.count({ where: { userId, scope, status: "mastered" } }),
   ]);
   return { learned, mastered };
 }
@@ -333,7 +375,7 @@ export async function totals(userId: string) {
 /**
  * 一次算出多本词库的已学 / 已掌握数：原来每本发两个 count，词库多了就是 2N 条并发查询（审计 F018）。
  */
-/** 一本词库的进度：learned = 学习中 + 已掌握；removed 是移出学习的词，词库列表按四色状态分列数量时要用（其余 = 未开始 / 未加入） */
+/** 一本词库的进度：learned = 学习中 + 已掌握；removed 是移出学习的词，词库列表按四色状态分列数量时要用（其余 = 未开始） */
 export type BookProgress = { learned: number; mastered: number; removed: number };
 
 export async function wordbookProgressMany(userId: string, wordbookIds: string[]): Promise<Map<string, BookProgress>> {
@@ -341,12 +383,15 @@ export async function wordbookProgressMany(userId: string, wordbookIds: string[]
   if (!wordbookIds.length) return out;
   // 代价随「要算几本」增长：线上实测一本约 6 ms、22 本 17–25 ms（规划器顺序扫 wordbook_word，
   // 改写成小表驱动的嵌套循环实测并不更快，索引查找同样要读那 21 MB）。所以首页只问当前那一本，
-  // 不要为了拿一本的进度把全部词库都算一遍（性能优化 P1-6）
+  // 不要为了拿一本的进度把全部词库都算一遍（性能优化 P1-6）。
+  // 每本按自己的进度作用域数：开了独立进度的只数 scope = 词库 id 的行，其余数全局（scope = ''）的行
   const rows = await prisma.$queryRaw<Array<{ wordbook_id: string; status: string; n: bigint }>>`
     SELECT ww.wordbook_id, p.status::text AS status, count(*) AS n
-    FROM user_word_progress p
-    JOIN wordbook_word ww ON ww.word_id = p.word_id
-    WHERE p.user_id = ${userId} AND p.status IN ('learning', 'mastered', 'removed') AND ww.wordbook_id IN (${Prisma.join(wordbookIds)})
+    FROM wordbook_word ww
+    LEFT JOIN user_wordbook_setting s ON s.user_id = ${userId} AND s.wordbook_id = ww.wordbook_id
+    JOIN user_word_progress p ON p.user_id = ${userId} AND p.word_id = ww.word_id
+      AND p.scope = CASE WHEN s.own_progress THEN ww.wordbook_id ELSE '' END
+    WHERE p.status IN ('learning', 'mastered', 'removed') AND ww.wordbook_id IN (${Prisma.join(wordbookIds)})
     GROUP BY 1, 2`;
   for (const r of rows) {
     const cur = out.get(r.wordbook_id);
@@ -366,14 +411,13 @@ export async function wordbookProgress(userId: string, wordbookId: string): Prom
 export type ListRow = { id: string; spelling: string; display: string | null; pos: string; def: string; status: WordStatus; pie: number; due: string | null };
 
 /** 列表查询与书签定位共用的 SQL 片段：状态表达式、按厂商取的主释义、筛选条件、排序 */
-function listQuery(userId: string, wordbookId: string, isCurrent: boolean, pref: AiPreference, q: { status?: string; search?: string; sort?: string }) {
-  // 四色状态：与 lib/status.ts 的 deriveStatus 一一对应
+function listQuery(userId: string, wordbookId: string, scope: Scope, pref: AiPreference, q: { status?: string; search?: string; sort?: string }) {
+  // 四色状态：与 lib/status.ts 的 deriveStatus 一一对应，不看是不是当前词库
   const statusExpr = Prisma.sql`CASE
     WHEN p.status = 'mastered' THEN 'mastered'
     WHEN p.status = 'learning' THEN 'learning'
     WHEN p.status = 'removed' THEN 'none'
-    WHEN ${Prisma.raw(isCurrent ? "TRUE" : "FALSE")} THEN 'new'
-    ELSE 'none' END`;
+    ELSE 'new' END`;
   // 主释义取哪家：与 pickAi 一致——「自动」是挑第一家有行的（DeepSeek 优先），
   // 挑中的那家 core 为空也不再看另一家，只退回词典释义
   const col = (name: string) =>
@@ -387,7 +431,7 @@ function listQuery(userId: string, wordbookId: string, isCurrent: boolean, pref:
   const bookJoin = Prisma.sql`
     FROM wordbook_word ww
     JOIN word w ON w.id = ww.word_id
-    LEFT JOIN user_word_progress p ON p.word_id = ww.word_id AND p.user_id = ${userId}`;
+    LEFT JOIN user_word_progress p ON p.word_id = ww.word_id AND p.user_id = ${userId} AND p.scope = ${scope}`;
 
   // 搜索：拼写与显示词头按前缀，释义按包含。LIKE 的通配符用 ! 转义，避免 % _ 被当成模式
   const kw = q.search?.trim().toLowerCase();
@@ -443,12 +487,12 @@ function listQuery(userId: string, wordbookId: string, isCurrent: boolean, pref:
  * 原来把整本词库读进内存再过滤排序，近万词的内置词库每翻一页、每切一次筛选都要重来一遍。
  */
 export async function listWordbookWords(userId: string, wordbookId: string, q: { status?: string; search?: string; sort?: string; cursor?: number; limit?: number }) {
-  const [currentId, settings] = await Promise.all([getCurrentWordbookId(userId), getSettings(userId)]);
+  const [currentId, settings, scope] = await Promise.all([getCurrentWordbookId(userId), getSettings(userId), scopeOfBook(userId, wordbookId)]);
   const isCurrent = currentId === wordbookId;
   const limit = Math.min(1000, q.limit ?? 100);
   const cursor = Math.max(0, q.cursor ?? 0);
   const master = await getConfigInt("study.master_interval");
-  const { statusExpr, col, coreExpr, aiJoin, bookJoin, cte, where, orderBy, hasStatus, kw } = listQuery(userId, wordbookId, isCurrent, settings.aiProvider, q);
+  const { statusExpr, col, coreExpr, aiJoin, bookJoin, cte, where, orderBy, hasStatus, kw } = listQuery(userId, wordbookId, scope, settings.aiProvider, q);
 
   type PageRow = { id: string; spelling: string; display: string | null; translation: string | null; core: string | null; core_pos: string | null; status: WordStatus; interval: number | null; due_date: Date | null };
   const [rows, countRows] = await Promise.all([
@@ -460,7 +504,7 @@ export async function listWordbookWords(userId: string, wordbookId: string, q: {
     // 状态计数按整本词库算，不受搜索与筛选影响（审计 F022）
     prisma.$queryRaw<Array<{ status: WordStatus; n: bigint }>>`
       SELECT (${statusExpr}) AS status, count(*)::bigint AS n
-      FROM wordbook_word ww LEFT JOIN user_word_progress p ON p.word_id = ww.word_id AND p.user_id = ${userId}
+      FROM wordbook_word ww LEFT JOIN user_word_progress p ON p.word_id = ww.word_id AND p.user_id = ${userId} AND p.scope = ${scope}
       WHERE ww.wordbook_id = ${wordbookId} GROUP BY 1`,
   ]);
 
@@ -484,7 +528,7 @@ export async function listWordbookWords(userId: string, wordbookId: string, q: {
       due: r.status === "learning" ? fromDate(r.due_date) : null,
     };
   });
-  return { rows: out, total, counts, nextCursor: cursor + limit < total ? cursor + limit : null, isCurrent };
+  return { rows: out, total, counts, nextCursor: cursor + limit < total ? cursor + limit : null, isCurrent, ownProgress: scope !== GLOBAL_SCOPE };
 }
 
 /**
@@ -492,8 +536,8 @@ export async function listWordbookWords(userId: string, wordbookId: string, q: {
  * 书签用它算出要从第几行开始加载，与列表用的是同一套条件与排序，不会错位。
  */
 export async function wordIndexIn(userId: string, wordbookId: string, wordId: string, q: { status?: string; search?: string; sort?: string }): Promise<number | null> {
-  const [currentId, settings] = await Promise.all([getCurrentWordbookId(userId), getSettings(userId)]);
-  const { bookJoin, cte, where, orderBy } = listQuery(userId, wordbookId, currentId === wordbookId, settings.aiProvider, q);
+  const [settings, scope] = await Promise.all([getSettings(userId), scopeOfBook(userId, wordbookId)]);
+  const { bookJoin, cte, where, orderBy } = listQuery(userId, wordbookId, scope, settings.aiProvider, q);
   const rows = await prisma.$queryRaw<Array<{ idx: bigint }>>`
     ${cte}SELECT idx FROM (
       SELECT ww.word_id AS wid, row_number() OVER (ORDER BY ${orderBy}) - 1 AS idx
@@ -546,7 +590,7 @@ export const wordbookInclude = Prisma.validator<Prisma.WordbookDefaultArgs>()({ 
 
 /** 导出：词库、进度、备注、日志 */
 export async function exportUserData(userId: string) {
-  const [user, wordbooks, progress, notes, logs, feedback, bookmarks, settings, currentId] = await Promise.all([
+  const [user, wordbooks, progress, notes, logs, feedback, bookmarks, bookSettings, settings, currentId] = await Promise.all([
     prisma.user.findUnique({ where: { id: userId }, select: { email: true, createdAt: true } }),
     prisma.wordbook.findMany({ where: { ownerId: userId }, include: { words: { include: { word: { select: { spelling: true } } }, orderBy: { sortOrder: "asc" } } } }),
     prisma.userWordProgress.findMany({ where: { userId }, include: { word: { select: { spelling: true } } } }),
@@ -554,19 +598,24 @@ export async function exportUserData(userId: string) {
     prisma.studyLog.findMany({ where: { userId }, include: { word: { select: { spelling: true } } }, orderBy: [{ studyDate: "asc" }, { studiedAt: "asc" }] }),
     prisma.wordFeedback.findMany({ where: { userId }, include: { word: { select: { spelling: true } } }, orderBy: { createdAt: "asc" } }),
     prisma.wordbookBookmark.findMany({ where: { userId }, include: { word: { select: { spelling: true } }, wordbook: { select: { name: true } } } }),
+    prisma.userWordbookSetting.findMany({ where: { userId }, include: { wordbook: { select: { name: true } } } }),
     getSettings(userId),
     getCurrentWordbookId(userId),
   ]);
   const currentBook = currentId ? await prisma.wordbook.findUnique({ where: { id: currentId }, select: { name: true } }) : null;
+  // 独立进度的行标上词库名（全局的为 null）；词库已删但行还在的极端情况写 id
+  const scopeNames = new Map(bookSettings.map((s) => [s.wordbookId, s.wordbook.name]));
+  const scopeName = (scope: string) => scope ? scopeNames.get(scope) ?? scope : null;
   return {
     // 导出的是生效后的设置（含默认值），不是库里那份可能残缺的原始 JSON；并补上当前学习词库与建库时间（审计 F170）
     exportedAt: new Date().toISOString(),
     user: { ...user, settings },
     currentWordbook: currentBook?.name ?? null,
     wordbooks: wordbooks.map((b) => ({ name: b.name, type: b.type, createdAt: b.createdAt, words: b.words.map((w) => w.word.spelling) })),
-    progress: progress.map((p) => ({ word: p.word.spelling, interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: fromDate(p.dueDate), lastReview: fromDate(p.lastReview) })),
+    progress: progress.map((p) => ({ word: p.word.spelling, wordbook: scopeName(p.scope), interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: fromDate(p.dueDate), lastReview: fromDate(p.lastReview) })),
     notes: notes.map((n) => ({ word: n.word.spelling, note: n.note, updatedAt: n.updatedAt })),
-    studyLog: logs.map((l) => ({ word: l.word.spelling, result: l.result, nextInterval: l.nextInterval, studyDate: fromDate(l.studyDate), studiedAt: l.studiedAt })),
+    studyLog: logs.map((l) => ({ word: l.word.spelling, wordbook: scopeName(l.scope), result: l.result, nextInterval: l.nextInterval, studyDate: fromDate(l.studyDate), studiedAt: l.studiedAt })),
+    ownProgress: bookSettings.filter((s) => s.ownProgress).map((s) => s.wordbook.name),
     feedback: feedback.map((f) => ({ word: f.word.spelling, content: f.content, createdAt: f.createdAt })),
     bookmarks: bookmarks.map((b) => ({ wordbook: b.wordbook.name, word: b.word.spelling, filter: b.filter, q: b.q, sort: b.sort, mode: b.mode, updatedAt: b.updatedAt })),
   };

@@ -9,8 +9,9 @@ import { DATE_COOKIE, resolveToday } from "@/lib/dates";
  * 独立详情页与详情浮层（拦截路由 `@detail/(.)word/[spelling]`）共用的服务端取数，
  * 与 /api/words/[spelling] 同一套逻辑（性能优化 P1-1）。
  * 查不到的词不跳系统 404 页，仍旧把提示交给客户端组件显示。
+ * `book` = 地址上的 ?book=：从哪本词库点进来的，状态与打分按那本的进度作用域（需求 3.3.6）
  */
-export async function loadWord(raw: string): Promise<{ spelling: string; initial: WordDetail | null; initialError: string }> {
+export async function loadWord(raw: string, book?: string | null): Promise<{ spelling: string; initial: WordDetail | null; initialError: string }> {
   const user = await requireUser();
   let spelling: string;
   try { spelling = normalizeWord(decodeURIComponent(raw)); } catch { spelling = normalizeWord(raw); }
@@ -19,5 +20,5 @@ export async function loadWord(raw: string): Promise<{ spelling: string; initial
   if (!word) return { spelling, initial: null, initialError: "词典里没有收录这个词" };
   // 打分按钮上的天数按客户端本地日期算（审计 F026）；Cookie 里没有就用服务器日期
   const today = resolveToday((await cookies()).get(DATE_COOKIE)?.value);
-  return { spelling, initial: await buildWordDetail(user.id, word, today), initialError: "" };
+  return { spelling, initial: await buildWordDetail(user.id, word, today, book || null), initialError: "" };
 }

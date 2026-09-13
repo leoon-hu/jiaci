@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withUser, ok, readJson } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { getCurrentWordbookId, wordbookProgressMany } from "@/lib/study";
+import { getCurrentWordbookId, ownProgressBooks, wordbookProgressMany } from "@/lib/study";
 
 /**
  * 词库列表。`?scope=current` 只返回当前学习的那一本（首页用）：
@@ -15,10 +15,10 @@ export const GET = withUser(async (req, _ctx, user) => {
     getCurrentWordbookId(user.id),
   ]);
   const books = currentOnly ? all.filter((b) => b.id === currentId) : all;
-  const progress = await wordbookProgressMany(user.id, books.map((b) => b.id));
+  const [progress, own] = await Promise.all([wordbookProgressMany(user.id, books.map((b) => b.id)), ownProgressBooks(user.id)]);
   const withProgress = books.map((b) => {
     const p = progress.get(b.id) ?? { learned: 0, mastered: 0, removed: 0 };
-    return { id: b.id, name: b.name, type: b.type, wordCount: b.wordCount, createdAt: b.createdAt, learned: p.learned, mastered: p.mastered, removed: p.removed, isCurrent: b.id === currentId };
+    return { id: b.id, name: b.name, type: b.type, wordCount: b.wordCount, createdAt: b.createdAt, learned: p.learned, mastered: p.mastered, removed: p.removed, isCurrent: b.id === currentId, ownProgress: own.has(b.id) };
   });
   return ok({ wordbooks: withProgress, currentId });
 });

@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db";
 import { requireUser } from "@/lib/auth";
-import { getBookmark, getCurrentWordbookId, wordbookProgress } from "@/lib/study";
+import { getBookmark, getCurrentWordbookId, ownProgressOf, wordbookProgress } from "@/lib/study";
 import WordbookClient from "./wordbook-client";
 
 /**
@@ -12,14 +12,15 @@ export default async function WordbookPage({ params }: { params: Promise<{ id: s
   const { id } = await params;
   const book = await prisma.wordbook.findFirst({ where: { id, OR: [{ type: "builtin" }, { ownerId: user.id }] } });
   if (!book) return <WordbookClient initialBook={null} initialBookmark={null} initialError="词库不存在" />;
-  const [p, currentId, bookmark] = await Promise.all([
+  const [p, currentId, bookmark, ownProgress] = await Promise.all([
     wordbookProgress(user.id, id),
     getCurrentWordbookId(user.id),
     getBookmark(user.id, id),
+    ownProgressOf(user.id, id),
   ]);
   return (
     <WordbookClient
-      initialBook={{ id: book.id, name: book.name, type: book.type, wordCount: book.wordCount, learned: p.learned, mastered: p.mastered, isCurrent: currentId === id }}
+      initialBook={{ id: book.id, name: book.name, type: book.type, wordCount: book.wordCount, learned: p.learned, mastered: p.mastered, isCurrent: currentId === id, ownProgress }}
       initialBookmark={bookmark}
     />
   );

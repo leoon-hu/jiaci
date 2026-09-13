@@ -8,8 +8,11 @@ import { IconSpeaker, IconX } from "./Icons";
 
 type Peek = { spelling: string; display?: string | null; status: WordStatus; phonetic: { us: string; uk: string } | null; core: string | null; meanings: Array<{ pos: string; defs: string[] }>; stopword?: boolean };
 
-/** 点击单词后页面下部弹出的小框：发音 + 核心义 + 释义，点击进入详情（需求 3.2.5） */
-export default function WordPeek({ word, accent, voice = "female", onClose, autoSpeak = true }: { word: string | null; accent: "us" | "uk"; voice?: "female" | "male"; onClose: () => void; autoSpeak?: boolean }) {
+/**
+ * 点击单词后页面下部弹出的小框：发音 + 核心义 + 释义，点击进入详情（需求 3.2.5）。
+ * `book` = 所在详情按哪本词库的进度算：状态按同一本查、进详情也带过去，免得同一个词在小框里和详情里两个状态
+ */
+export default function WordPeek({ word, book, accent, voice = "female", onClose, autoSpeak = true }: { word: string | null; book?: string | null; accent: "us" | "uk"; voice?: "female" | "male"; onClose: () => void; autoSpeak?: boolean }) {
   const vk = voiceKeyOf(accent, voice);
   const [data, setData] = useState<Peek | null>(null);
   const [loading, setLoading] = useState(false);
@@ -19,12 +22,12 @@ export default function WordPeek({ word, accent, voice = "female", onClose, auto
     let alive = true;
     setLoading(true);
     // 等查到原形再发音：直接读点到的变形会念错，还会为每个变形触发一次按需合成（审计 NU07）
-    api<Peek>(`/api/words/peek?w=${encodeURIComponent(word)}`)
+    api<Peek>(`/api/words/peek?w=${encodeURIComponent(word)}${book ? `&book=${book}` : ""}`)
       .then((d) => { if (!alive) return; setData(d); if (autoSpeak && !d.stopword) speakWord(d.spelling, vk); })
       .catch(() => { if (alive) setData(null); })
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, [word, vk, autoSpeak]);
+  }, [word, book, vk, autoSpeak]);
   useEffect(() => {
     if (!word) return;
     const onDoc = (e: MouseEvent) => { const t = e.target as HTMLElement; if (!t.closest("#peek") && !t.closest(".w")) onClose(); };
@@ -37,7 +40,7 @@ export default function WordPeek({ word, accent, voice = "female", onClose, auto
   const bottom = (bar?.offsetHeight ?? 0) + 10;
   const status = data?.status ?? "none";
   return (
-    <div className="peek" id="peek" style={{ bottom }} onClick={() => router.push(`/word/${encodeURIComponent(data?.spelling ?? word)}`, { scroll: false })}>
+    <div className="peek" id="peek" style={{ bottom }} onClick={() => router.push(`/word/${encodeURIComponent(data?.spelling ?? word)}${book ? `?book=${book}` : ""}`, { scroll: false })}>
       <div className="peek-head">
         <span className="peek-word">{data?.display ?? data?.spelling ?? word}</span>
         <span className={`tag tag-${status === "new" ? "new" : status === "none" ? "none" : status}`}>{STATUS_LABEL[status]}</span>

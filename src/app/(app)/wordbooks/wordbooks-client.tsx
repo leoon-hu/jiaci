@@ -13,19 +13,15 @@ import { useMe } from "@/lib/client/useMe";
 import { STATUS_LABEL, type WordStatus } from "@/lib/status";
 import "./wordbooks.css";
 
-type Book = { id: string; name: string; type: "builtin" | "import" | "custom"; wordCount: number; learned: number; mastered: number; removed: number; isCurrent: boolean; createdAt: string };
+type Book = { id: string; name: string; type: "builtin" | "import" | "custom"; wordCount: number; learned: number; mastered: number; removed: number; isCurrent: boolean; createdAt: string; ownProgress: boolean };
 /** 行里四色数量的顺序，与单词列表的筛选 chips 一致 */
 const STATUS_ORDER: WordStatus[] = ["new", "learning", "mastered", "none"];
 /**
  * 一本词库按四色状态的数量（与单词列表页 counts 的口径一致，见 lib/status.ts 的 deriveStatus）：
- * 没学过的词在当前词库里是「未开始」，在别的词库里是「未加入」；移出学习的词一律「未加入」。
+ * 状态跟着单词走，不看这本是不是当前词库——没学过的词是「未开始」，移出学习的词是「未加入」。
  */
 function statusCounts(b: Book): Record<WordStatus, number> {
-  const learning = b.learned - b.mastered;
-  const rest = Math.max(0, b.wordCount - b.learned - b.removed);
-  return b.isCurrent
-    ? { new: rest, learning, mastered: b.mastered, none: b.removed }
-    : { new: 0, learning, mastered: b.mastered, none: rest + b.removed };
+  return { new: Math.max(0, b.wordCount - b.learned - b.removed), learning: b.learned - b.mastered, mastered: b.mastered, none: b.removed };
 }
 const TYPE_TAG: Record<Book["type"], [string, string]> = { builtin: ["tag-builtin", "内置"], import: ["tag-import", "导入"], custom: ["tag-custom", "自建"] };
 const COVER: Record<Book["type"], string> = { builtin: "linear-gradient(135deg,#4f6df5,#7c5cff)", import: "linear-gradient(135deg,#d97706,#f59e0b)", custom: "linear-gradient(135deg,#1f9d64,#10b981)" };
@@ -79,7 +75,7 @@ export default function WordbooksClient({ initial }: { initial: Book[] }) {
       <div className={"row book-row" + (b.isCurrent ? " current" : "")} key={b.id} onClick={() => router.push(`/wordbooks/${b.id}`)}>
         <div className="cover" style={{ background: COVER[b.type] }}>{coverText(b.name)}</div>
         <div className="main">
-          <div className="flex wrap" style={{ gap: 8 }}><span className="title">{b.name}</span><span className="count">{b.wordCount} 词</span>{b.isCurrent && <span className="tag tag-current">学习中</span>}{showType && <span className={`tag ${TYPE_TAG[b.type][0]}`}>{TYPE_TAG[b.type][1]}</span>}</div>
+          <div className="flex wrap" style={{ gap: 8 }}><span className="title">{b.name}</span><span className="count">{b.wordCount} 词</span>{b.isCurrent && <span className="tag tag-current">学习中</span>}{b.ownProgress && <span className="tag tag-own" title="这本词库用自己的一套进度">独立进度</span>}{showType && <span className={`tag ${TYPE_TAG[b.type][0]}`}>{TYPE_TAG[b.type][1]}</span>}</div>
           <div className="book-stats">{STATUS_ORDER.map((s) => <span key={s} className={`st st-${s}`} title={STATUS_LABEL[s]} aria-label={`${STATUS_LABEL[s]} ${counts[s]}`}><i />{counts[s]}</span>)}</div>
           <div className="progress thin stacked mt-8"><i className="ok" style={{ width: `${mp}%`, zIndex: 1 }} /><i className="learn" style={{ width: `${pct}%` }} /></div>
         </div>

@@ -9,6 +9,7 @@ import Pie from "@/components/Pie";
 import { IconArrowUp, IconBookmarkSolid, IconChevron, IconSearch, IconSpeaker } from "@/components/Icons";
 import { useToast } from "@/components/Toast";
 import Dropdown from "@/components/Dropdown";
+import Modal from "@/components/Modal";
 import { api, localToday } from "@/lib/client/api";
 import { speakWordAndDef, voiceKeyOf, type VoiceKey } from "@/lib/client/speech";
 import { useMe } from "@/lib/client/useMe";
@@ -19,8 +20,8 @@ import type { ProgressState, RateResult } from "@/lib/scheduler";
 import { deriveStatus, pieProgress } from "@/lib/status";
 import "./wordbook.css";
 
-type Book = { id: string; name: string; type: "builtin" | "import" | "custom"; wordCount: number; learned: number; mastered: number; isCurrent: boolean };
-type ListResp = { rows: ListRow[]; total: number; counts: Record<string, number>; nextCursor: number | null; isCurrent: boolean };
+type Book = { id: string; name: string; type: "builtin" | "import" | "custom"; wordCount: number; learned: number; mastered: number; isCurrent: boolean; ownProgress: boolean };
+type ListResp = { rows: ListRow[]; total: number; counts: Record<string, number>; nextCursor: number | null; isCurrent: boolean; ownProgress: boolean };
 const TYPE_TAG: Record<Book["type"], [string, string]> = { builtin: ["tag-builtin", "内置"], import: ["tag-import", "导入"], custom: ["tag-custom", "自建"] };
 /** 状态筛选：按钮上带该状态的饼图样式（空心 / 半填充 / 实心），就是列表的图例 */
 const FILTERS: Array<[string, string, string | null, number]> = [["all", "全部", null, 0], ["new", "未开始", "st-new", 0], ["learning", "学习中", "st-learning", 50], ["mastered", "已掌握", "st-mastered", 100], ["none", "未加入", "st-none", 0]];
@@ -89,10 +90,10 @@ type Pending = { ids: string[]; act: ListAct | "know"; clientTs?: string; rows: 
 /** 服务端 rate-batch 单次上限 500，超过要切片提交（审计 F053） */
 const BATCH_MAX = 500;
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
-/** 提交一批待定操作要发的请求（提交队列与离开页面的 keepalive 共用） */
-const pendingRequests = (p: Pending): Array<{ url: string; body: unknown }> => p.act === "know"
-  ? [{ url: "/api/study/rate", body: { wordId: p.ids[0], result: "know", date: localToday(), source: "list", clientTs: p.clientTs } }]
-  : chunk(p.ids, BATCH_MAX).map((ids) => ({ url: "/api/study/rate-batch", body: { wordIds: ids, result: p.act, date: localToday() } }));
+/** 提交一批待定操作要发的请求（提交队列与离开页面的 keepalive 共用）；带上词库 id，开了独立进度的词库写自己那套（需求 3.3.6） */
+const pendingRequests = (p: Pending, bookId: string): Array<{ url: string; body: unknown }> => p.act === "know"
+  ? [{ url: "/api/study/rate", body: { wordId: p.ids[0], result: "know", date: localToday(), source: "list", clientTs: p.clientTs, wordbookId: bookId } }]
+  : chunk(p.ids, BATCH_MAX).map((ids) => ({ url: "/api/study/rate-batch", body: { wordIds: ids, result: p.act, date: localToday(), wordbookId: bookId } }));
 
 /** 词库详情 / 单词列表（需求 3.3.5） */
 /**
@@ -169,13 +170,13 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
    */
   const commit = useCallback(async (p: Pending) => {
     try {
-      for (const { url, body } of pendingRequests(p)) {
+      for (const { url, body } of pendingRequests(p, id)) {
         const r = await api<{ duplicate?: boolean; skipped?: string | null }>(url, { method: "POST", json: body });
         if (p.act === "know" && (r.duplicate || r.skipped)) await refresh();
       }
       loadBook();
     } catch (e) { toast(`操作没有保存：${(e as Error).message}`); await refresh(); }
-  }, [refresh, loadBook, toast]);
+  }, [id, refresh, loadBook, toast]);
   /**
    * 把一批待定操作交给串行提交队列：不等网络返回就返回，调用方可以立刻接着操作。
    * 原来 doAct 里 await flush() 期间的新操作会被随后的赋值覆盖、永远提交不上去（审计 F051）。
@@ -266,11 +267,11 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
     const beacon = () => {
       const p = pending.current; if (!p) return;
       clearTimeout(p.timer); pending.current = null;
-      for (const { url, body } of pendingRequests(p)) fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "same-origin" }).catch(() => {});
+      for (const { url, body } of pendingRequests(p, id)) fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "same-origin" }).catch(() => {});
     };
     window.addEventListener("pagehide", beacon);
     return () => { window.removeEventListener("pagehide", beacon); beacon(); };
-  }, []);
+  }, [id]);
   // 详情浮层里打了分：这一页一直挂在浮层底下，不会因为返回而重新加载，得自己同步（需求 3.2.5）
   useEffect(() => onWordChanged(() => { refresh(); loadBook(); }), [refresh, loadBook]);
   useEffect(() => {
@@ -281,6 +282,23 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
   }, [selectMode]);
 
   async function setCurrent() { await api("/api/wordbooks/current", { method: "PUT", json: { wordbookId: id } }); toast("已设为当前学习词库"); loadBook(); loadList(); }
+  /**
+   * 切换独立进度 / 全局进度（需求 3.3.6）：只改这本词库读写哪一套进度，两套都保留。
+   * 待定操作先提交（它们属于切换前那一套），再改设置、重新拉词库信息与列表
+   */
+  const [scopeAsk, setScopeAsk] = useState(false);
+  async function toggleScope() {
+    if (!book || busy) return;
+    setBusy(true);
+    const next = !book.ownProgress;
+    try {
+      await flush();
+      await api(`/api/wordbooks/${id}`, { method: "PATCH", json: { ownProgress: next } });
+      setScopeAsk(false);
+      toast(next ? "已改用独立进度：这本词库从零开始记，全局进度原样保留" : "已改回全局进度：独立进度原样保留，随时可以切回");
+      await Promise.all([loadBook(), loadList()]);
+    } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
+  }
   async function addWord() {
     if (!addInput.trim() || busy) return;
     setBusy(true);
@@ -339,7 +357,7 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
   /** 本地先按新状态更新行与各状态数量；不在当前筛选里的行从列表移走 */
   function applyLocal(ids: string[], act: ListAct) {
     const set = new Set(ids); const cur = dataRef.current;
-    const st = deriveStatus({ progressStatus: ACT_PROGRESS[act], inCurrentBook: cur?.isCurrent ?? false });
+    const st = deriveStatus({ progressStatus: ACT_PROGRESS[act] });
     const counts = { ...(cur?.counts ?? {}) };
     let gone = 0;
     const next: ListRow[] = [];
@@ -375,7 +393,7 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
     const clientTs = `list-${row.id}-${Date.now()}`;
     let r: { progress: ProgressState; nextInterval: number; duplicate: boolean; skipped: string | null };
     try {
-      r = await api("/api/study/rate", { method: "POST", json: { wordId: row.id, result: "know", date: localToday(), source: "list", clientTs, preview: true } });
+      r = await api("/api/study/rate", { method: "POST", json: { wordId: row.id, result: "know", date: localToday(), source: "list", clientTs, preview: true, wordbookId: id } });
     } catch (e) { toast((e as Error).message); return; }
     // 被守卫拦下的情况什么都不会写，只提示原因，没有可撤销的东西
     if (r.skipped === "mastered" || r.skipped === "removed") {
@@ -396,7 +414,7 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
   /** 打完分按服务端返回的进度刷新这一行：状态、饼图、下次复习时间，顺带调整各筛选的数量 */
   function applyProgress(id: string, p: ProgressState) {
     const cur = dataRef.current;
-    const st = deriveStatus({ progressStatus: p.status, inCurrentBook: cur?.isCurrent ?? false });
+    const st = deriveStatus({ progressStatus: p.status });
     const counts = { ...(cur?.counts ?? {}) };
     let gone = 0;
     const next: ListRow[] = [];
@@ -436,7 +454,7 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
             <div className="head-card">
               <div className="cover">{coverText(book.name)}</div>
               <div className="grow">
-                <div className="flex wrap"><h2>{book.name}</h2><span className={`tag ${TYPE_TAG[book.type][0]}`}>{TYPE_TAG[book.type][1]}</span>{book.isCurrent && <span className="tag tag-current">学习中</span>}
+                <div className="flex wrap"><h2>{book.name}</h2><span className={`tag ${TYPE_TAG[book.type][0]}`}>{TYPE_TAG[book.type][1]}</span>{book.isCurrent && <span className="tag tag-current">学习中</span>}{book.ownProgress && <span className="tag tag-own" title="这本词库用自己的一套进度，与其它词库不共享">独立进度</span>}
                   {bm && <button type="button" className="bm-go" onClick={jumpToBookmark}
                     title={`跳到书签：${bm.display ?? bm.spelling}`} aria-label={`跳到书签：${bm.display ?? bm.spelling}`}><IconBookmarkSolid /></button>}
                 </div>
@@ -444,7 +462,8 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
                 <div className="progress thin mt-8" style={{ maxWidth: 360 }}><i style={{ width: `${book.wordCount ? (book.learned / book.wordCount) * 100 : 0}%` }} /></div>
               </div>
             </div>
-            <div className="btn-row mt-16">{book.isCurrent ? <Link className="btn btn-primary" href="/study">开始学习</Link> : <button className="btn btn-primary" onClick={setCurrent}>设为当前学习</button>}</div>
+            <div className="btn-row mt-16">{book.isCurrent ? <Link className="btn btn-primary" href="/study">开始学习</Link> : <button className="btn btn-primary" onClick={setCurrent}>设为当前学习</button>}
+              <button type="button" className="btn btn-secondary" onClick={() => setScopeAsk(true)} disabled={busy}>{book.ownProgress ? "改用全局进度" : "改用独立进度"}</button></div>
             {book.type === "custom" && <div className="add-inline"><input className="input" placeholder="输入单词或短语，回车添加" value={addInput} onChange={(e) => setAddInput(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addWord()} /><button className="btn btn-primary" onClick={addWord} disabled={busy}>添加</button></div>}
           </div>
         )}
@@ -463,13 +482,13 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
         </div>
         {/* 一行操作提示；按钮的含义拖起来就能看到，这里只提醒有这两个手势 */}
         <div className="list-hint">
-          <span>横向拖动一行：书签 / 重新记 / 加进度 / 已掌握 / 移出；长按多选{mode !== "both" && "；点击单词或释义揭开遮罩并朗读"}</span>
+          <span>横向拖动一行：书签 / 重新记 / 加进度 / 已掌握 / 移出；长按多选{mode !== "both" && "；点击行揭开遮罩并朗读，行尾箭头进详情"}</span>
         </div>
         <div className={`list edge dense mode-${mode}`}>
           {loadErr && !data ? <div className="empty">{loadErr}</div> : !data ? <div className="empty">加载中…</div> : rows.length === 0 ? <div className="empty"><div className="icon">🔍</div>没有匹配的单词</div> : rows.map((r) => (
             <DragRow key={r.id} row={r} mode={mode} vk={vk} selectMode={selectMode} checked={selected.has(r.id)}
               bookmarked={bm?.wordId === r.id} flash={flash === r.id}
-              onOpen={() => router.push(`/word/${encodeURIComponent(r.spelling)}`, { scroll: false })} onAct={(a) => doAct([r.id], a)} onProgress={() => addProgress(r)}
+              onOpen={() => router.push(`/word/${encodeURIComponent(r.spelling)}?book=${id}`, { scroll: false })} onAct={(a) => doAct([r.id], a)} onProgress={() => addProgress(r)}
               onBookmark={() => bookmarkRow(r)} onLongPress={() => enterSelect(r.id)} onToggle={() => toggle(r.id)} />
           ))}
         </div>
@@ -504,6 +523,21 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
           </div>
         )}
       </main>
+      {/* 切换进度作用域前说清楚：两套记录都在，只是换一套来看、来记 */}
+      <Modal open={scopeAsk} onClose={() => setScopeAsk(false)}>
+        {book?.ownProgress ? (
+          <>
+            <h3>改回全局进度？</h3>
+            <p>这本词库将改用所有词库共用的那套进度：每个词显示它在全局的状态。这本的独立进度不会删除，随时可以再切回来。</p>
+          </>
+        ) : (
+          <>
+            <h3>改用独立进度？</h3>
+            <p>这本词库将单独记一套进度：所有词从「未开始」算起，学习、打分、已掌握都只记在这本里，不影响其它词库；全局进度原样保留，随时可以切回。</p>
+          </>
+        )}
+        <div className="actions"><button className="btn btn-secondary" onClick={() => setScopeAsk(false)}>取消</button><button className="btn btn-primary" onClick={toggleScope} disabled={busy}>{book?.ownProgress ? "改回全局进度" : "改用独立进度"}</button></div>
+      </Modal>
     </AppShell>
   );
 }
@@ -540,7 +574,7 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
     el.addEventListener("touchmove", stop, { passive: false });
     return () => el.removeEventListener("touchmove", stop);
   }, []);
-  /** 多选时整行都是勾选区，不再拦截「单词 + 释义」的点击 */
+  /** 隐藏释义 / 隐藏英文时整行点击都是揭开遮罩（进详情只剩行尾箭头）；多选时整行是勾选区 */
   const masked = mode !== "both" && !selectMode;
   /** 可朗读的释义：占位串不读 */
   const readableDef = row.def && row.def !== NO_DEF ? row.def : null;
@@ -553,6 +587,12 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
   const chipText = mode === "zh" && !revealed ? (readableDef ?? row.display ?? row.spelling) : (row.display ?? row.spelling);
   /** 卡片正压着的按钮：卡片会挡住按钮上的字，所以把要执行的操作写在卡片上 */
   const armed = pick === null ? null : OPTS[pick];
+  /** 揭开 / 收起遮罩：揭开时顺带读一遍这个词与释义（遮住的那一侧已可见，两种模式都可以带释义；revealed 还没生效，不走 speechDef()），收起不读 */
+  const toggleReveal = () => {
+    const next = !revealed;
+    setRevealed(next);
+    if (next) speakWordAndDef(row.spelling, readableDef, vk);
+  };
 
   const clearLp = () => { if (lp.current) { clearTimeout(lp.current); lp.current = null; } };
 
@@ -624,20 +664,13 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
         </div>, document.body)}
       <div ref={contentRef} className="s-content"
         onPointerDown={down} onPointerMove={move} onPointerUp={() => end()} onPointerCancel={() => end(true)} onContextMenu={(e) => e.preventDefault()}
-        onClick={() => { if (suppress.current) return; if (selectMode) onToggle(); else onOpen(); }}
+        onClick={() => { if (suppress.current) return; if (selectMode) onToggle(); else if (masked) toggleReveal(); else onOpen(); }}
         role={selectMode ? "checkbox" : undefined} aria-checked={selectMode ? checked : undefined}>
         <Pie status={row.status} progress={row.pie} />
         <button type="button" className="spk" aria-label={`播放 ${row.spelling} 的发音`} onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); speakWordAndDef(row.spelling, speechDef(), vk); }}><IconSpeaker /></button>
-        {/* 隐藏释义 / 隐藏英文时点「单词 + 释义」揭开遮罩，顺带读一遍这个词与释义；再点一次收起时不读 */}
-        <div className="main" onClick={masked ? (e) => {
-          if (suppress.current) return;
-          e.stopPropagation();
-          const next = !revealed;
-          setRevealed(next);
-          // 揭开之后遮住的那一侧就可见了，两种模式下都可以连释义一起读；revealed 还没生效，这里不走 speechDef()
-          if (next) speakWordAndDef(row.spelling, readableDef, vk);
-        } : undefined}>
+        {/* 揭开遮罩的点击挂在整行（上面的 onClick）而不是这里：这块只有一行字高，行的上下内边距点到会漏给进详情 */}
+        <div className="main">
           <span className="word">{row.display ?? row.spelling}</span><span className="def">{row.pos && <i className="pos">{row.pos}</i>}{row.def}</span>
         </div>
         {row.due && row.status === "learning" && <span className="due">复习 {row.due}</span>}

@@ -6,7 +6,7 @@ import { loadWord } from "@/app/(app)/word/[spelling]/load";
  * 盖在原来的页面之上。底层页面不卸载，返回 = 关掉浮层，不重新请求也不丢滚动位置。
  * 刷新 / 直接打开该 URL 时不走拦截，由 `(app)/word/[spelling]` 渲染整页。
  */
-export default async function WordSheetPage({ params }: { params: Promise<{ spelling: string }> }) {
-  const { spelling, initial, initialError } = await loadWord((await params).spelling);
+export default async function WordSheetPage({ params, searchParams }: { params: Promise<{ spelling: string }>; searchParams: Promise<{ book?: string }> }) {
+  const { spelling, initial, initialError } = await loadWord((await params).spelling, (await searchParams).book);
   return <WordScreen key={spelling} mode="overlay" spelling={spelling} initial={initial} initialError={initialError} />;
 }

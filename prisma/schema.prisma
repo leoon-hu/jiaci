@@ -77,14 +77,15 @@ model User {
   /// 同意时间
   termsAcceptedAt DateTime? @map("terms_accepted_at")
 
-  sessions  Session[]
-  wordbooks Wordbook[]
-  notes     UserWordNote[]
-  progress  UserWordProgress[]
-  logs      StudyLog[]
-  feedback  WordFeedback[]
-  current   UserCurrentWordbook?
-  bookmarks WordbookBookmark[]
+  sessions     Session[]
+  wordbooks    Wordbook[]
+  notes        UserWordNote[]
+  progress     UserWordProgress[]
+  logs         StudyLog[]
+  feedback     WordFeedback[]
+  current      UserCurrentWordbook?
+  bookmarks    WordbookBookmark[]
+  bookSettings UserWordbookSetting[]
 
   @@map("user_profile")
 }
@@ -148,6 +149,7 @@ model Wordbook {
   words     WordbookWord[]
   current   UserCurrentWordbook[]
   bookmarks WordbookBookmark[]
+  settings  UserWordbookSetting[]
 
   @@index([ownerId])
   @@index([type])
@@ -417,14 +419,17 @@ model UserWordProgress {
   reps       Int            @default(0)
   /// 遗忘次数（复习时打「模糊」的次数）
   lapses     Int            @default(0)
-  /// 状态：new 已加入未开始 / learning 学习中 / mastered 已掌握 / removed 已移出
+  /// 状态：new 未开始 / learning 学习中 / mastered 已掌握 / removed 已移出
   status     ProgressStatus @default(new)
+  /// 进度作用域：空串 = 全局进度（默认，所有词库共用）；否则 = 开了「独立进度」的词库 id，该词库里的词单独一套记录。
+  /// 用空串而不是可空的词库 id：主键列不能为空；不建外键，删词库时显式清理这个作用域的行
+  scope      String         @default("")
   /// 最近更新时间
   updatedAt  DateTime       @updatedAt @map("updated_at")
   user       User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   word       Word           @relation(fields: [wordId], references: [id], onDelete: Cascade)
 
-  @@id([userId, wordId])
+  @@id([userId, wordId, scope])
   @@index([userId, dueDate])
   @@index([userId, status])
   /// 删词时的级联要按 word_id 找行，没有前导索引会顺序扫全表
@@ -453,6 +458,8 @@ model StudyLog {
   /// 学习日期：打分时采用的**客户端本地日期**，今日队列、今日已完成、学习记录时间线都按它算；
   /// 不能用 studied_at 的 UTC 日期代替——本地日期与 UTC 日期不一致的用户会算错一天
   studyDate    DateTime    @default(dbgenerated("CURRENT_DATE")) @map("study_date") @db.Date
+  /// 进度作用域，与 user_word_progress.scope 同义：这条记录属于全局进度（空串）还是某本词库的独立进度
+  scope        String      @default("")
   user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
   word         Word        @relation(fields: [wordId], references: [id], onDelete: Cascade)
 
@@ -477,6 +484,25 @@ model UserCurrentWordbook {
   /// 删词库时的级联要按 wordbook_id 找行
   @@index([wordbookId])
   @@map("user_current_wordbook")
+}
+
+/// 用户对某本词库的设置表：目前只有「独立进度」开关。内置词库大家共用，所以按用户分开存；没有行 = 默认（全局进度）
+model UserWordbookSetting {
+  /// 用户 ID
+  userId      String   @map("user_id")
+  /// 词库 ID
+  wordbookId  String   @map("wordbook_id")
+  /// 独立进度：开着时这本词库里的词读写 scope = 词库 id 的那套进度，关掉回到全局进度；两套都保留，来回切换互不影响
+  ownProgress Boolean  @default(false) @map("own_progress")
+  /// 最近修改时间
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wordbook    Wordbook @relation(fields: [wordbookId], references: [id], onDelete: Cascade)
+
+  @@id([userId, wordbookId])
+  /// 删词库时的级联要按 wordbook_id 找行
+  @@index([wordbookId])
+  @@map("user_wordbook_setting")
 }
 
 /// 系统配置表（需求 3.6）：键值对，运营方直接用 SQL 维护，服务端读取带 60 秒缓存
