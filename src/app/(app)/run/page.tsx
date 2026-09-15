@@ -33,29 +33,30 @@ export default function RunPage() {
   const { toast } = useToast();
   const [data, setData] = useState<RunResp | null>(null);
   const [loadErr, setLoadErr] = useState("");
-  const [booted, setBooted] = useState(false);
   const [embedded, setEmbedded] = useState(false);
+  const [starting, setStarting] = useState(false);
 
   const load = () => api<RunResp>(`/api/study/run?date=${localToday()}`).then(setData).catch((e) => setLoadErr((e as Error).message));
   useEffect(() => { load(); }, []);
   // iOS 上的微信 / 内嵌浏览器不保证后台播放，提示用 Safari 打开
   useEffect(() => { const ua = navigator.userAgent; setEmbedded(/iPhone|iPad/.test(ua) && /MicroMessenger|FBAN|FBAV|Instagram|Line\/|Weibo|QQ\//i.test(ua)); }, []);
 
-  // 内容与设置都到手后准备一次：回到页面时播放器还在放（或准备着）就不打断，内容有更新只提示；
-  // 准备好但还没开始播的、放的是旧内容，直接按新内容重新准备
-  // 按集合比、不看顺序：接口每次返回的顺序不稳定（混合 / 随机顺序会洗牌，同日到期的复习词先后也不固定），
-  // 开发环境 StrictMode 还会把挂载请求跑两遍，按顺序比会把同一批词当成「有更新」
+  // 播放器里的词是不是今天这批：按集合比、不看顺序——接口每次返回的顺序不稳定（混合 / 随机顺序会洗牌，
+  // 同日到期的复习词先后也不固定），开发环境 StrictMode 还会把挂载请求跑两遍，按顺序比会把同一批词当成「有更新」
   const sameWords = !!data && st.words.length === data.words.length && (() => { const ids = new Set(st.words.map((w) => w.wordId)); return data.words.every((w) => ids.has(w.wordId)); })();
-  useEffect(() => {
-    if (!data || meLoading || booted) return;
-    setBooted(true);
-    if (!data.hasBook || !data.words.length) return;
-    if (st.status === "preparing" || st.status === "playing" || st.status === "paused" || (st.status === "ready" && sameWords)) return;
-    prepare(data.words, optionsOf(settings), voiceKeyOf(settings.accent, settings.voice));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, meLoading, booted]);
 
-  const restart = async () => { setLoadErr(""); const r = await api<RunResp>(`/api/study/run?date=${localToday()}`).catch((e) => { setLoadErr((e as Error).message); return null; }); if (!r) return; setData(r); if (r.words.length) prepare(r.words, optionsOf(settings), voiceKeyOf(settings.accent, settings.voice)); };
+  // 进入页面不自动下载：先告诉用户今天有多少词、要下载什么，点「准备音频」才开始。
+  // 点的时候重新取一次今天的内容（停止后再点、或在页面上停了很久，内容可能已经变了）
+  const startPrepare = async () => {
+    if (starting) return;
+    setStarting(true); setLoadErr("");
+    try {
+      const r = await api<RunResp>(`/api/study/run?date=${localToday()}`);
+      setData(r);
+      if (r.words.length) prepare(r.words, optionsOf(settings), voiceKeyOf(settings.accent, settings.voice));
+    } catch (e) { setLoadErr((e as Error).message); }
+    finally { setStarting(false); }
+  };
 
   async function save(patch: Partial<UserSettings>) {
     const merged = { ...settings, ...patch };
@@ -82,7 +83,7 @@ export default function RunPage() {
       <p className="small muted">第一次准备会把今天要用的音频全部下载好，跑步中不再需要网络；没有现成音频的例句要现合成，可能要等一两分钟</p>
     </div>
   );
-  else if (st.status === "ready") hero = (
+  else if (st.status === "ready" && (sameWords || !data)) hero = (
     <div className="run-hero">
       <div className="run-emoji">🎧</div>
       <p className="run-summary">今天 {words.length - st.skipped} 个词 · 一轮约 {minutes(st.duration / settings.runSpeed)} 分钟，循环播放</p>
@@ -92,8 +93,20 @@ export default function RunPage() {
       <p className="small muted">戴上耳机，点开始后就可以熄屏放进口袋；锁屏和耳机上可以暂停、切词</p>
     </div>
   );
-  else if (st.status === "error") hero = <div className="run-hero"><p>{st.error}</p><button className="btn btn-primary" onClick={restart}>重新准备</button></div>;
-  else if (st.status === "idle") hero = <div className="run-hero"><div className="run-emoji">🎧</div><p className="muted">已停止</p><button className="btn btn-primary btn-lg" onClick={restart}>重新准备</button></div>;
+  else if (st.status === "error") hero = <div className="run-hero"><p>{st.error}</p>{loadErr && <p className="err-msg">{loadErr}</p>}<button className="btn btn-primary btn-lg" onClick={startPrepare} disabled={starting}>重新准备</button></div>;
+  else if (st.status === "idle" || st.status === "ready") hero = (
+    // 还没准备（刚进来、停止之后），或准备好的是旧的一批词：说明要做什么，点了才下载
+    <div className="run-hero">
+      <div className="run-emoji">🎧</div>
+      <p className="run-summary">今天 {data?.words.length ?? 0} 个词</p>
+      {st.status === "ready" && <p className="small muted">今天的内容有更新，重新准备后播放的才是最新的</p>}
+      {data && data.total > data.words.length && <p className="small muted">今天共 {data.total} 个词，只取前 {data.words.length} 个</p>}
+      <p className="small muted">先把这些词的发音、释义和例句音频（约 {Math.max(1, Math.round((data?.words.length ?? 0) * 0.05))} MB）下载到手机上，之后播放不需要网络；没有现成音频的例句要现合成，可能要等一两分钟</p>
+      {loadErr && <p className="err-msg">{loadErr}</p>}
+      <button className="btn btn-primary btn-lg btn-block run-prepare" onClick={startPrepare} disabled={starting}>{st.status === "ready" ? "重新准备" : "准备音频"}</button>
+      <p className="small muted">准备好之后再点开始，戴上耳机就可以熄屏放进口袋</p>
+    </div>
+  );
   else hero = (
     <div className="run-hero now">
       {cur && (
@@ -124,7 +137,7 @@ export default function RunPage() {
         <div className="run-count">{position}</div>
       </div>
       {embedded && <p className="run-notice">当前浏览器熄屏后可能停止播放，建议用 Safari 打开本页</p>}
-      {data && st.status !== "idle" && st.status !== "error" && !sameWords && <p className="run-notice">今天的内容有更新，停止后重新准备即可听到</p>}
+      {data && (st.status === "preparing" || st.status === "playing" || st.status === "paused") && !sameWords && <p className="run-notice">今天的内容有更新，停止后重新准备即可听到</p>}
       {hero}
       {words.length > 0 && (
         <>

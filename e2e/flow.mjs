@@ -363,9 +363,13 @@ log.push(`详情：短语 give up → 标题「${await evalJs("document.querySel
 // ---- 跑步模式（需求 3.2.6）：/run 把今日队列的音频拼成一整段 → 开始播放 → 切词 → 自动推进 → 改设置不断播 → 首页小条 → 停止 ----
 {
   await send("Page.navigate", { url: BASE + "/run" }); await sleep(2500);
+  // 进页面不自动下载：先是「准备音频」按钮，点了才开始
+  const prompt = await waitFor("document.querySelector('.run-prepare')", 8000);
+  const autoStarted = await evalJs("!!document.querySelector('.run-progress')");
+  await evalJs("document.querySelector('.run-prepare')?.click()");
   const ready = await waitFor("document.querySelector('.run-start')", 120000, 500);
   const summary = await evalJs("document.querySelector('.run-summary')?.textContent");
-  log.push(`跑步：准备完成「${summary}」 ${ready && /^今天 \d+ 个词/.test(summary ?? "") ? "✓" : "✗"}`);
+  log.push(`跑步：进页面先提示、不自动下载 ${prompt && !autoStarted ? "✓" : "✗"}；点「准备音频」后准备完成「${summary}」 ${ready && /^今天 \d+ 个词/.test(summary ?? "") ? "✓" : "✗"}`);
   const start = await rect(".run-start");
   await mouse("mousePressed", start.x + start.w / 2, start.y + start.h / 2); await mouse("mouseReleased", start.x + start.w / 2, start.y + start.h / 2);
   const playing = await waitFor("document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 8000);

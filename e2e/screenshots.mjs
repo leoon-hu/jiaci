@@ -43,8 +43,8 @@ const PAGES = [
   ["word-note", "/word/abandon", "[...document.querySelectorAll('.detail-ops button')].find(b=>b.textContent.includes('备注'))?.click()"],
   ["study-front", "/study", ""],
   ["study-answer", "/study", "document.querySelector('.front')?.click()"],
-  // 跑步模式：等音频准备好（现成片段几秒钟）再截「开始播放」态
-  ["run", "/run", "new Promise(r=>{const t=Date.now();(function w(){if(document.querySelector('.run-start')||Date.now()-t>60000)r();else setTimeout(w,300)})()})"],
+  // 跑步模式：点「准备音频」，等音频准备好（现成片段几秒钟）再截「开始播放」态
+  ["run", "/run", "new Promise(r=>{const t=Date.now();let clicked=false;(function w(){const p=document.querySelector('.run-prepare');if(p&&!clicked){clicked=true;p.click();}if(document.querySelector('.run-start')||Date.now()-t>60000)r();else setTimeout(w,300)})()})"],
   ["import", "/import", ""],
   ["new", "/wordbooks/new", ""],
   ["settings", "/settings", ""],
