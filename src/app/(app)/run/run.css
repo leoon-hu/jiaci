@@ -20,6 +20,7 @@
 .run-controls .btn-icon{width:52px;height:52px}
 .run-controls .run-toggle{width:72px;height:72px}
 .run-controls .run-toggle svg{width:30px;height:30px}
+.run-stop{margin-top:4px;min-width:160px;gap:8px}
 .run-page .row.setting{gap:14px}
 .run-page .row.setting .ctl{flex:none;display:flex;align-items:center;gap:8px}
 .run-list .row.current{background:var(--primary-soft)}

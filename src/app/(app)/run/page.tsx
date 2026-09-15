@@ -1,12 +1,13 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IconNext, IconPause, IconPlay, IconPrev, IconX } from "@/components/Icons";
+import { IconNext, IconPause, IconPlay, IconPrev, IconStop, IconX } from "@/components/Icons";
+import RunStopConfirm from "@/components/RunStopConfirm";
 import { useToast } from "@/components/Toast";
 import { api, localToday } from "@/lib/client/api";
 import { useMe } from "@/lib/client/useMe";
 import { voiceKeyOf } from "@/lib/client/speech";
-import { applyOptions, jumpTo, next, pause, play, prepare, prev, stop, useRunPlayer, type RunOptions, type RunWord } from "@/lib/client/run-player";
+import { applyOptions, jumpTo, next, pause, play, prepare, prev, useRunPlayer, type RunOptions, type RunWord } from "@/lib/client/run-player";
 import type { UserSettings } from "@/lib/settings";
 import "./run.css";
 
@@ -35,6 +36,7 @@ export default function RunPage() {
   const [loadErr, setLoadErr] = useState("");
   const [embedded, setEmbedded] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [stopAsk, setStopAsk] = useState(false);
 
   const load = () => api<RunResp>(`/api/study/run?date=${localToday()}`).then(setData).catch((e) => setLoadErr((e as Error).message));
   useEffect(() => { load(); }, []);
@@ -125,7 +127,8 @@ export default function RunPage() {
       </div>
       {st.error && <p className="err-msg center">{st.error}</p>}
       <p className="small muted">{playing ? "熄屏或切到其它应用都会继续播放；锁屏和耳机上可以暂停、切词" : "已暂停"}</p>
-      <button className="btn btn-ghost btn-sm" type="button" onClick={stop}>停止</button>
+      {/* 停止会丢掉准备好的音频，按钮要醒目但点了先确认（RunStopConfirm） */}
+      <button className="btn btn-danger-soft run-stop" type="button" onClick={() => setStopAsk(true)}><IconStop /> 停止</button>
     </div>
   );
 
@@ -160,6 +163,7 @@ export default function RunPage() {
           </div>
         </>
       )}
+      <RunStopConfirm open={stopAsk} onClose={() => setStopAsk(false)} />
     </main>
   );
 }
