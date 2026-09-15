@@ -19,6 +19,12 @@ export const SettingsSchema = z.object({
   listMode: z.enum(["both", "en", "zh"]),
   /** 词条资料来源：auto 按厂商顺序取第一家有资料的；指定厂商没有资料时用词典兜底 */
   aiProvider: z.enum(["auto", "openai", "deepseek"]),
+  /** 跑步模式（需求 3.2.6）：每个单词读几遍、读不读释义 / 例句、词间间隔（秒）、语速；在跑步页改，设置页不显示 */
+  runRepeat: z.number().int().min(1).max(3),
+  runDef: z.boolean(),
+  runSentence: z.boolean(),
+  runGap: z.number().int().min(1).max(5),
+  runSpeed: z.number().min(0.8).max(1.2),
 });
 export type UserSettings = z.infer<typeof SettingsSchema>;
 
@@ -28,6 +34,7 @@ export async function defaultSettings(): Promise<UserSettings> {
     reviewLimit: await getConfigInt("study.default_review_limit"),
     order: "review-first", newOrder: "book", accent: "us", voice: "female", exSpeaker: "right",
     autoPlay: true, autoReadDetail: true, theme: "system", listMode: "both", aiProvider: "auto",
+    runRepeat: 2, runDef: true, runSentence: true, runGap: 2, runSpeed: 1,
   };
 }
 

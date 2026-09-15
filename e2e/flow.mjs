@@ -1,5 +1,5 @@
 /**
- * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 长按打分 → 详情页词典兜底
+ * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 长按打分 → 详情页词典兜底 → 跑步模式（拼接播放、切词、小条）
  * 不依赖任何内置词库：每次用新账号，在页面内通过接口新建「e2e 测试词库」，结束后删除。
  * 用法：npm run dev 后执行 `npm run e2e`（默认 http://localhost:3000，输出截图到 e2e/out）
  * 环境变量：BASE_URL、CHROME（Chrome 可执行文件路径）
@@ -14,7 +14,7 @@ const BASE = process.env.BASE_URL || "http://localhost:3000";
 const outDir = process.argv[2] || new URL("./out", import.meta.url).pathname;
 mkdirSync(outDir, { recursive: true });
 const port = 9500 + Math.floor(Math.random() * 100);
-const chrome = spawn(CH, [`--remote-debugging-port=${port}`, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--window-size=390,844", "--no-first-run", "--user-data-dir=" + outDir + "/profile-e2e", "about:blank"], { stdio: "ignore" });
+const chrome = spawn(CH, [`--remote-debugging-port=${port}`, "--headless=new", "--disable-gpu", "--hide-scrollbars", "--window-size=390,844", "--no-first-run", "--autoplay-policy=no-user-gesture-required", "--user-data-dir=" + outDir + "/profile-e2e", "about:blank"], { stdio: "ignore" });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 /** 轮询等待页面上的条件成立，最多等 ms 毫秒；比一串固定 sleep 稳（审计 F157） */
 async function waitFor(expr, ms = 8000, step = 150) {
@@ -360,6 +360,33 @@ log.push(`详情：提交反馈 → toast「${fbToast}」 ${fbToast?.includes("�
 await send("Page.navigate", { url: BASE + "/word/give%20up" }); await sleep(3500);
 const pdef = await evalJs("document.querySelector('.core-def')?.textContent");
 log.push(`详情：短语 give up → 标题「${await evalJs("document.querySelector('.entry-title .spelling')?.textContent")}」，核心义「${pdef?.slice(0, 24)}」 ${pdef?.includes("放弃") ? "✓" : "✗"}`);
+// ---- 跑步模式（需求 3.2.6）：/run 把今日队列的音频拼成一整段 → 开始播放 → 切词 → 自动推进 → 改设置不断播 → 首页小条 → 停止 ----
+{
+  await send("Page.navigate", { url: BASE + "/run" }); await sleep(2500);
+  const ready = await waitFor("document.querySelector('.run-start')", 120000, 500);
+  const summary = await evalJs("document.querySelector('.run-summary')?.textContent");
+  log.push(`跑步：准备完成「${summary}」 ${ready && /^今天 \d+ 个词/.test(summary ?? "") ? "✓" : "✗"}`);
+  const start = await rect(".run-start");
+  await mouse("mousePressed", start.x + start.w / 2, start.y + start.h / 2); await mouse("mouseReleased", start.x + start.w / 2, start.y + start.h / 2);
+  const playing = await waitFor("document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 8000);
+  const w0 = await evalJs("document.querySelector('.run-word')?.textContent");
+  await evalJs("document.querySelector('.run-controls [aria-label=\"下一个\"]')?.click()"); await sleep(400);
+  const w1 = await evalJs("document.querySelector('.run-word')?.textContent");
+  // 一个词（两遍 + 释义 + 例句 + 2 秒间隔）十几秒，等它自己走到下一个
+  const advanced = await waitFor(`document.querySelector('.run-word')?.textContent !== ${JSON.stringify(w1)}`, 30000, 500);
+  const w2 = await evalJs("document.querySelector('.run-word')?.textContent");
+  log.push(`跑步：开始播放 ${playing ? "✓" : "✗"}；下一个 ${w0} → ${w1} ${w1 && w1 !== w0 ? "✓" : "✗"}；播完自动推进 → ${w2} ${advanced ? "✓" : "✗"}`);
+  await evalJs("[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('读例句'))?.querySelector('input').click()"); await sleep(1500);
+  const stillPlaying = await waitFor("document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 3000);
+  const saved = await evalJs("fetch('/api/settings').then(r=>r.json()).then(s=>s.runSentence)");
+  await shot("e2e-run");
+  await evalJs("document.querySelector('.run-top a').click()"); await sleep(2500);
+  const pill = await evalJs("document.querySelector('.run-pill .text b')?.textContent");
+  await evalJs("document.querySelector('.run-pill [aria-label=\"停止跑步模式\"]')?.click()"); await sleep(400);
+  const gone = await waitFor("!document.querySelector('.run-pill')", 3000);
+  log.push(`跑步：关掉例句后仍在播 ${stillPlaying ? "✓" : "✗"}，设置随账号保存 ${saved === false ? "✓" : "✗"}；回首页有小条「${pill}」 ${pill ? "✓" : "✗"}，小条上停止 ${gone ? "✓" : "✗"}`);
+  await evalJs("fetch('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({runSentence:true})})");
+}
 // 清理测试词库
 if (fixture.id) await evalJs(`fetch('/api/wordbooks/${fixture.id}',{method:'DELETE'}).then(r=>r.status)`);
 log.push(`控制台异常：${errors.length ? errors.slice(0, 3).join(" | ") : "无"}`);

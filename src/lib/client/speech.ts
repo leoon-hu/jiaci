@@ -35,11 +35,16 @@ const preloaded = new Set<string>();
 let current: HTMLAudioElement | null = null;
 /** 每次发起朗读递增；异步链路里发现序号变了就放弃，避免旧的朗读盖住新的 */
 let seq = 0;
+/** 独占的长播放（跑步模式）：这里任何一次朗读开始前先让它暂停，两路声音不叠在一起；只停朗读（stopSpeaking）不碰它 */
+let exclusive: (() => void) | null = null;
+export function setExclusivePlayer(pause: (() => void) | null) { exclusive = pause; }
 
 function stopAll() {
   if (current) { const a = current; current = null; a.pause(); }
   if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
 }
+/** 开始一次新的朗读：停掉上一次与跑步模式，拿到本次序号 */
+function begin(): number { stopAll(); exclusive?.(); return ++seq; }
 
 function playUrl(url: string): Promise<Outcome> {
   return new Promise((resolve) => {
@@ -96,11 +101,13 @@ function tts(text: string, key: VoiceKey, rate: number, zh = false): Promise<Out
   });
 }
 
-async function urlFor(kind: Kind, text: string, key: VoiceKey): Promise<string | null> {
+/** 一段音频的访问 URL（音色名按当前配置取，取不到返回 null）；跑步模式下载片段也用它 */
+export async function audioUrl(kind: Kind, text: string, key: VoiceKey): Promise<string | null> {
   const v = await voices();
   const voice = kind === "definition" ? v.def : v.keys[key];
   return voice ? `/api/audio/${clipUrlPath(kind, voice, text)}` : null;
 }
+const urlFor = audioUrl;
 
 /** 播放一段：音频文件 → 失败记为缺失并退到 Web Speech；my 是发起时的序号，变了就放弃 */
 async function speak(kind: Kind, text: string, key: VoiceKey, my: number): Promise<Outcome> {
@@ -116,13 +123,13 @@ async function speak(kind: Kind, text: string, key: VoiceKey, my: number): Promi
 }
 
 /** 读单词 */
-export async function speakWord(word: string, key: VoiceKey) { stopAll(); const my = ++seq; await speak("word", word, key, my); }
+export async function speakWord(word: string, key: VoiceKey) { const my = begin(); await speak("word", word, key, my); }
 /** 读句子 */
-export async function speakSentence(text: string, key: VoiceKey) { stopAll(); const my = ++seq; await speak("sentence", text, key, my); }
+export async function speakSentence(text: string, key: VoiceKey) { const my = begin(); await speak("sentence", text, key, my); }
 /** 进入详情自动朗读：单词 → 例句，串行；被自动播放策略拦住或被新的朗读打断就停。
  *  详情页只传第一个例句（例句顺序由接口每次随机），学习卡答案态同理 */
 export async function speakSequence(word: string, sentences: string[], key: VoiceKey) {
-  stopAll(); const my = ++seq;
+  const my = begin();
   let r = await speak("word", word, key, my);
   for (const s of sentences) {
     if (my !== seq || r === "stopped" || r === "blocked") return;
@@ -134,7 +141,7 @@ export async function speakSequence(word: string, sentences: string[], key: Voic
  * 串行且沿用 speakSequence 的中断规则——被新的朗读打断、或被浏览器自动播放策略拦住，就不再读后面那段。
  */
 export async function speakWordAndDef(word: string, def: string | null | undefined, key: VoiceKey) {
-  stopAll(); const my = ++seq;
+  const my = begin();
   const r = await speak("word", word, key, my);
   if (!def || my !== seq || r === "stopped" || r === "blocked") return;
   await speak("definition", def, key, my);

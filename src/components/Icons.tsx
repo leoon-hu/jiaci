@@ -18,3 +18,8 @@ export const IconTrash = () => (<svg {...base}><polyline points="3 6 5 6 21 6" /
 export const IconFlag = () => (<svg {...base}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>);
 export const IconCheck = () => (<svg {...base} strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>);
 export const IconTap = () => (<svg {...base}><path d="M9 11.5V4a1.5 1.5 0 0 1 3 0v6" /><path d="M12 10.5V9a1.5 1.5 0 0 1 3 0v2" /><path d="M15 11a1.5 1.5 0 0 1 3 0v1" /><path d="M18 12a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-2.7L4.6 15a1.5 1.5 0 0 1 2.3-1.9L9 15" /></svg>);
+/** 跑步模式的播放控件：实心播放 / 暂停、上一个 / 下一个 */
+export const IconPlay = () => (<svg {...base} fill="currentColor"><polygon points="6 4 20 12 6 20 6 4" /></svg>);
+export const IconPause = () => (<svg {...base} fill="currentColor"><rect x="5" y="4" width="5" height="16" rx="1" /><rect x="14" y="4" width="5" height="16" rx="1" /></svg>);
+export const IconPrev = () => (<svg {...base} fill="currentColor"><polygon points="19 20 9 12 19 4 19 20" /><line x1="5" y1="19" x2="5" y2="5" /></svg>);
+export const IconNext = () => (<svg {...base} fill="currentColor"><polygon points="5 4 15 12 5 20 5 4" /><line x1="19" y1="5" x2="19" y2="19" /></svg>);

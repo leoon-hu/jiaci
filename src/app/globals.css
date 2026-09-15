@@ -95,6 +95,15 @@ p{margin:0 0 10px}
   body.has-tabbar{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom))}
 }
 
+/* ---------- 跑步模式播放中的小条（需求 3.2.6）：离开 /run 后挂在主框架底部，手机上让开底部 Tab ---------- */
+.run-pill{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:19;display:flex;align-items:center;gap:6px;width:min(560px,calc(100% - 24px));padding:6px 6px 6px 12px;background:var(--card);border:1px solid var(--border);border-radius:999px;box-shadow:var(--shadow-lg)}
+.run-pill .body{flex:1;min-width:0;display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none}
+.run-pill .icon{flex:none;font-size:18px}
+.run-pill .text{min-width:0;display:flex;align-items:baseline;gap:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:14px}
+.run-pill .text b{font-weight:700}
+.run-pill .text .def{color:var(--muted);font-size:13px;overflow:hidden;text-overflow:ellipsis}
+@media (max-width:767px){.run-pill{bottom:calc(var(--tab-h) + env(safe-area-inset-bottom) + 10px)}}
+
 /* ---------- 页面容器 ---------- */
 .page{max-width:1120px;margin:0 auto;padding:24px 24px 48px}
 .page.narrow{max-width:820px}

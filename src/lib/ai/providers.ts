@@ -25,6 +25,11 @@ export const AI_PEEK_SELECT = {
   aiOpenai: { select: { phoneticUs: true, phoneticUk: true, core: true, corePos: true, meanings: true } },
   aiDeepseek: { select: { phoneticUs: true, phoneticUk: true, core: true, corePos: true, meanings: true } },
 } as const;
+/** 跑步模式（需求 3.2.6）每个词只朗读单词、核心义与第一条例句：音标给页面显示，其余字段不取 */
+export const AI_RUN_SELECT = {
+  aiOpenai: { select: { phoneticUs: true, phoneticUk: true, core: true, corePos: true, examples: true } },
+  aiDeepseek: { select: { phoneticUs: true, phoneticUk: true, core: true, corePos: true, examples: true } },
+} as const;
 /**
  * 详情页的 select：只有 primary 那一家取整行，其余厂商只取主键——它们只用来标注「有没有资料」
  * （顶部来源下拉的「无资料」）。原来两家整行都取，一半的数据取回来就扔了。

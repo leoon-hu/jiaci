@@ -73,7 +73,7 @@ export default function HomeClient({ initial, initialBook }: { initial: Today; i
               {!done && pending > 0 && (
                 <>
                   <Link className="btn btn-primary btn-lg btn-block mt-12" href="/study">开始学习</Link>
-                  <p className="small muted center mt-12" style={{ marginBottom: 0 }}>先复习到期词，再学新词{data.stats.reviewDeferred > 0 ? ` · ${data.stats.reviewDeferred} 个复习词已顺延` : ""}</p>
+                  {data.stats.reviewDeferred > 0 && <p className="small muted center mt-12" style={{ marginBottom: 0 }}>{data.stats.reviewDeferred} 个复习词已顺延</p>}
                 </>
               )}
               {pending === 0 && (
@@ -82,6 +82,8 @@ export default function HomeClient({ initial, initialBook }: { initial: Today; i
                   {data.stats.newRemaining > 0 && <Link className="btn btn-secondary btn-lg btn-block mt-12" href="/study?extra=1">再学一组（额外新词）</Link>}
                 </>
               )}
+              {/* 跑步模式（需求 3.2.6）：有词库就显示；今天没有待学也没有已完成的词时进去是空态 */}
+              <Link className="btn btn-secondary btn-block mt-12" href="/run" prefetch={false}>🎧 跑步模式</Link>
               <div className="totals"><span>累计已学 <b>{data.totals.learned}</b></span><span>已掌握 <b>{data.totals.mastered}</b></span></div>
             </div>
           </>

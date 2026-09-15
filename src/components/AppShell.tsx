@@ -2,6 +2,7 @@
 import Link from "next/link";
 import Logo from "./Logo";
 import TermsNotice from "./TermsNotice";
+import RunPill from "./RunPill";
 import { IconBooks, IconSettings, IconStudy } from "./Icons";
 import { useUser } from "./UserContext";
 
@@ -37,6 +38,7 @@ export default function AppShell({ nav, tabbar = true, children }: { nav: NavKey
       </header>
       <TermsNotice />
       <div className={tabbar ? "has-tabbar" : undefined}>{children}</div>
+      <RunPill />
       {tabbar && <nav className="tabbar">{links}</nav>}
     </>
   );

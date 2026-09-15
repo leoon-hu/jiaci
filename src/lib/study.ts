@@ -1,7 +1,7 @@
 import { Prisma, type StudySource } from "@prisma/client";
 import { wordFreq, type WordFreq } from "./dict";
 import { wordCore, wordView, type WordView, type DictPart } from "./word-view";
-import { AI_CARD_SELECT, aiDetailSelect, aiProvidersWithData, aiRowOf, isFullAiRow, pickAi, type AiPreference, type WordAiRelations, AI_PROVIDERS, type AiProvider } from "./ai/providers";
+import { AI_CARD_SELECT, AI_RUN_SELECT, aiDetailSelect, aiProvidersWithData, aiRowOf, isFullAiRow, pickAi, type AiPreference, type WordAiRelations, AI_PROVIDERS, type AiProvider } from "./ai/providers";
 import { prisma } from "./db";
 import { ApiError } from "./api";
 import { getConfig, getConfigInt } from "./config";
@@ -368,6 +368,51 @@ export async function totals(userId: string) {
     prisma.userWordProgress.count({ where: { userId, scope, status: "mastered" } }),
   ]);
   return { learned, mastered };
+}
+
+/** ---------- 跑步模式（需求 3.2.6） ---------- */
+
+/** 一轮最多放多少个词：100 词一轮约 20 分钟、音频约 8 MB，再多手机内存与首次准备时间都不合适 */
+export const RUN_MAX_WORDS = 100;
+export type RunWord = {
+  wordId: string; spelling: string; display: string | null;
+  /** 来源：今日队列里的复习 / 新词，或今天已在学习卡上完成的词 */
+  kind: "review" | "new" | "done";
+  phonetic: { us: string; uk: string } | null;
+  /** 中文核心义：口径与单词列表行、列表小喇叭读的释义一致（wordCore），也就是登记过音频的那句 */
+  def: string | null;
+  /** 第一条例句（固定取 examples[0]，不像详情页那样随机打乱） */
+  sentence: string | null;
+};
+type AiRunRow = { phoneticUs: string | null; phoneticUk: string | null; core: string | null; corePos: string | null; examples: Prisma.JsonValue };
+
+/**
+ * 今天要循环朗读的词：今日队列（到期复习 + 待学新词，顺序就是学习顺序设置的顺序）在前，
+ * 今天已在学习卡上完成的词（source = study 且最后一条是认识 / 已掌握，即首页「今日已完成」那批）在后，
+ * 去重后截到 RUN_MAX_WORDS。跑前听是预习、学完听是复习，两种用法都覆盖。
+ */
+export async function buildRunList(userId: string, today: string): Promise<{ words: RunWord[]; total: number; hasBook: boolean }> {
+  const q = await buildTodayQueue(userId, today);
+  if (!q.hasBook) return { words: [], total: 0, hasBook: false };
+  const scope = await scopeOfBook(userId, q.bookId);
+  const todayLogs = await prisma.studyLog.findMany({ where: { userId, scope, studyDate: toDate(today)!, source: "study" }, orderBy: { studiedAt: "asc" }, select: { wordId: true, result: true } });
+  const kinds = new Map<string, RunWord["kind"]>();
+  for (const it of q.items) kinds.set(it.wordId, it.kind);
+  for (const id of doneTodayIds(todayLogs)) if (!kinds.has(id)) kinds.set(id, "done");
+  const ids = Array.from(kinds.keys());
+  const picked = ids.slice(0, RUN_MAX_WORDS);
+  if (!picked.length) return { words: [], total: 0, hasBook: true };
+  const rows = await prisma.word.findMany({ where: { id: { in: picked } }, include: AI_RUN_SELECT });
+  const byId = new Map(rows.map((w) => [w.id, w]));
+  const words: RunWord[] = [];
+  for (const id of picked) {
+    const w = byId.get(id);
+    if (!w) continue;
+    const p = pickAi<AiRunRow>(w, q.settings.aiProvider);
+    const v = wordView(w, p?.row, p?.provider ?? null);
+    words.push({ wordId: w.id, spelling: w.spelling, display: w.display, kind: kinds.get(id)!, phonetic: v.phonetic, def: wordCore(w, p?.row).def, sentence: v.examples[0]?.en ?? null });
+  }
+  return { words, total: ids.length, hasBook: true };
 }
 
 /** ---------- 词库进度 / 单词列表（3.3.1 / 3.3.5） ---------- */

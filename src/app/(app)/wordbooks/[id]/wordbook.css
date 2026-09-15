@@ -42,18 +42,29 @@
 /* 拖动时整行内容让位给下层的操作按钮，词本身跟着手指走（.s-chip） */
 .srow.dragging .s-content{opacity:0}
 .s-content:hover{background:var(--bg)}
-.s-content .main{flex:1;min-width:0;display:flex;align-items:baseline;gap:10px}
+/* 「单词 + 释义」只占自己的宽度（放不下时释义省略），右边剩下的空白归 .tail：
+   遮罩模式下点这块揭开遮罩、点 .tail 进详情，两块的分界就是释义文字的右端 */
+.s-content .main{flex:0 1 auto;min-width:0;display:flex;align-items:baseline;gap:10px}
 .s-content .word{font-weight:600;font-size:15px;flex:none;cursor:inherit}
-.s-content .def{color:var(--muted);font-size:13px;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s-content .def{color:var(--muted);font-size:13px;flex:0 1 auto;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* 释义前的词性：与详情页同样的主色斜体，随释义字号缩放 */
 .s-content .def .pos{min-width:0;margin-right:5px;font-size:.92em}
+/* 行尾区域：释义右侧的空白 + 到期日 + 箭头，吃掉整行剩余宽度、撑满行高并贴到右边缘（负外边距抵掉行的内边距）。
+   「隐藏释义 / 隐藏英文」模式下「单词 + 释义」被用来揭开遮罩，进详情靠的是这一整块，不只是箭头 */
+.s-content .tail{position:relative;flex:1 0 auto;align-self:stretch;display:flex;align-items:center;justify-content:flex-end;gap:10px;margin:-7px -12px -7px 0}
+/* 遮罩模式下两块的分界：.tail 左缘一道短竖线（不撑满行高，免得看起来像表格分栏），悬停时随箭头一起变主色 */
+.srow.masked .tail::before{content:"";position:absolute;left:0;top:50%;width:1px;height:14px;transform:translateY(-50%);background:var(--border-strong);transition:background .15s}
+.srow.masked .tail:hover::before{background:var(--primary)}
+/* 悬停提示「点击查看详情」：只在有鼠标的设备上占位与显示（触屏上 :hover 会在轻点后粘住，而且没有悬停这回事） */
+.s-content .tail .tip{display:none;font-size:11px;color:var(--primary);white-space:nowrap;opacity:0;transition:opacity .15s}
+@media (hover:hover){.s-content .tail .tip{display:inline}.s-content .tail:hover .tip{opacity:1}}
 .s-content .due{font-size:11px;color:var(--faint);white-space:nowrap}
-/* 行尾进入详情的箭头：图标只有 18px，点击区撑到 44×44 并贴到行的上下与右边缘。
-   「隐藏释义 / 隐藏英文」模式下「单词 + 释义」区域被用来揭开遮罩，这里就是进详情的唯一入口 */
-.s-content .chev{flex:none;align-self:stretch;width:44px;margin:-7px -12px -7px 0;padding:0;border:0;background:none;
+/* 箭头：图标只有 18px，点击区撑到 44×44 */
+.s-content .chev{flex:none;align-self:stretch;width:44px;padding:0;border:0;background:none;
   display:flex;align-items:center;justify-content:center;color:var(--faint);cursor:pointer;
   -webkit-tap-highlight-color:transparent;transition:color .15s}
-.s-content .chev:hover{color:var(--primary)}
+/* 鼠标悬在行尾区域任何位置都点亮箭头，提示这一整块都能进详情 */
+.s-content .tail:hover .chev{color:var(--primary)}
 .s-content .chev:active svg{transform:translateX(1px)}
 .s-content .chev svg{transition:transform .1s}
 /* 行首小喇叭：点击读单词，按下不触发滑动 / 长按 */
@@ -103,6 +114,8 @@
 /* 多选：长按进入，行首勾选圈，底部批量操作栏 */
 .s-check{width:20px;height:20px;border-radius:50%;border:2px solid var(--border-strong);box-sizing:border-box;flex:none;display:inline-flex;align-items:center;justify-content:center;transition:.12s}
 .s-check.on{background:var(--primary);border-color:var(--primary)}
+/* 勾选圈在 .tail 里，.tail 的负外边距贴到了行的右缘，这里补回行的内边距，位置与原来一致 */
+.s-content .tail .s-check{margin-right:12px}
 .s-check.on::after{content:"";width:5px;height:10px;border:solid #fff;border-width:0 2px 2px 0;transform:translateY(-1px) rotate(45deg)}
 .srow.checked .s-content,.srow.checked .s-content:hover{background:var(--primary-soft)}
 .srow.selecting .s-content{cursor:default}

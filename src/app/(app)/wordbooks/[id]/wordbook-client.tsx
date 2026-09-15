@@ -482,7 +482,7 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
         </div>
         {/* 一行操作提示；按钮的含义拖起来就能看到，这里只提醒有这两个手势 */}
         <div className="list-hint">
-          <span>横向拖动一行：书签 / 重新记 / 加进度 / 已掌握 / 移出；长按多选{mode !== "both" && "；点击行揭开遮罩并朗读，行尾箭头进详情"}</span>
+          <span>横向拖动一行：书签 / 重新记 / 加进度 / 已掌握 / 移出；长按多选{mode !== "both" && "；点击单词或释义揭开遮罩并朗读，释义右边的空白到行尾都进详情"}</span>
         </div>
         <div className={`list edge dense mode-${mode}`}>
           {loadErr && !data ? <div className="empty">{loadErr}</div> : !data ? <div className="empty">加载中…</div> : rows.length === 0 ? <div className="empty"><div className="icon">🔍</div>没有匹配的单词</div> : rows.map((r) => (
@@ -550,6 +550,8 @@ const NO_DEF = "暂无释义";
 function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen, onAct, onProgress, onBookmark, onLongPress, onToggle }: { row: ListRow; mode: ListMode; vk: VoiceKey; selectMode: boolean; checked: boolean; bookmarked: boolean; flash: boolean; onOpen: () => void; onAct: (a: ListAct) => void; onProgress: () => void; onBookmark: () => void; onLongPress: () => void; onToggle: () => void }) {
   const rowRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  /** 行尾区域（释义右侧的空白 + 到期日 + 箭头）：遮罩模式下点这里进详情、点其余位置揭开遮罩 */
+  const tailRef = useRef<HTMLDivElement>(null);
   const dg = useRef<{ x: number; y: number; pick: number | null; axis: "x" | "y" | null; id: number } | null>(null);
   const lp = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fired = useRef(false);
@@ -574,7 +576,7 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
     el.addEventListener("touchmove", stop, { passive: false });
     return () => el.removeEventListener("touchmove", stop);
   }, []);
-  /** 隐藏释义 / 隐藏英文时整行点击都是揭开遮罩（进详情只剩行尾箭头）；多选时整行是勾选区 */
+  /** 隐藏释义 / 隐藏英文时点「单词 + 释义」是揭开遮罩、点释义右侧到行尾的区域进详情；多选时整行是勾选区 */
   const masked = mode !== "both" && !selectMode;
   /** 可朗读的释义：占位串不读 */
   const readableDef = row.def && row.def !== NO_DEF ? row.def : null;
@@ -654,7 +656,7 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
     }, DROP_MS);
   }
   return (
-    <div className={"srow" + (pt ? " dragging" : "") + (selectMode ? " selecting" : "") + (checked ? " checked" : "") + (revealed ? " revealed" : "") + (bookmarked ? " bookmarked" : "") + (flash ? " bm-flash" : "")} ref={rowRef} data-sp={row.spelling} data-id={row.id}>
+    <div className={"srow" + (pt ? " dragging" : "") + (selectMode ? " selecting" : "") + (masked ? " masked" : "") + (checked ? " checked" : "") + (revealed ? " revealed" : "") + (bookmarked ? " bookmarked" : "") + (flash ? " bm-flash" : "")} ref={rowRef} data-sp={row.spelling} data-id={row.id}>
       <div className="s-opts" aria-hidden>{OPTS.map((o, i) => <div key={o.o} className={`s-opt ${o.cls}${pick === i ? " active" : ""}`}>{o.label}{o.sub && <small>{o.sub}</small>}</div>)}</div>
       {/* 卡片挂到 body 上：留在行里会被列表的 overflow 裁掉，拖不出这一行 */}
       {pt && createPortal(
@@ -664,20 +666,30 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
         </div>, document.body)}
       <div ref={contentRef} className="s-content"
         onPointerDown={down} onPointerMove={move} onPointerUp={() => end()} onPointerCancel={() => end(true)} onContextMenu={(e) => e.preventDefault()}
-        onClick={() => { if (suppress.current) return; if (selectMode) onToggle(); else if (masked) toggleReveal(); else onOpen(); }}
+        onClick={(e) => {
+          if (suppress.current) return;
+          if (selectMode) onToggle();
+          else if (masked && !tailRef.current?.contains(e.target as Node)) toggleReveal();
+          else onOpen();
+        }}
         role={selectMode ? "checkbox" : undefined} aria-checked={selectMode ? checked : undefined}>
         <Pie status={row.status} progress={row.pie} />
         <button type="button" className="spk" aria-label={`播放 ${row.spelling} 的发音`} onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); speakWordAndDef(row.spelling, speechDef(), vk); }}><IconSpeaker /></button>
-        {/* 揭开遮罩的点击挂在整行（上面的 onClick）而不是这里：这块只有一行字高，行的上下内边距点到会漏给进详情 */}
+        {/* 点击都挂在整行（上面的 onClick）、按落点分派，而不是分别挂在这块和 .tail 上：
+            两块都只有一行字高，行的上下内边距点到会落空；整行接住再按「落点在不在行尾区域」判断，留白也算数 */}
         <div className="main">
           <span className="word">{row.display ?? row.spelling}</span><span className="def">{row.pos && <i className="pos">{row.pos}</i>}{row.def}</span>
         </div>
-        {row.due && row.status === "learning" && <span className="due">复习 {row.due}</span>}
-        {/* 多选时勾选圈放在行尾，顶替进入详情的箭头 */}
-        {selectMode ? <span className={"s-check" + (checked ? " on" : "")} aria-hidden />
-          : <button type="button" className="chev" aria-label={`打开 ${row.spelling} 的详情`}
-              onClick={(e) => { e.stopPropagation(); if (!suppress.current) onOpen(); }}><IconChevron /></button>}
+        {/* 行尾区域：释义右侧的空白 + 到期日 + 箭头，撑满行高。遮罩模式下进详情靠这一整块，不只是箭头那 44px；
+            左缘一道小竖线（CSS）标出与「单词 + 释义」的分界，鼠标悬上去在箭头旁显示提示 */}
+        <div className="tail" ref={tailRef}>
+          {row.due && row.status === "learning" && <span className="due">复习 {row.due}</span>}
+          {masked && <span className="tip" aria-hidden>点击查看详情</span>}
+          {/* 多选时勾选圈放在行尾，顶替进入详情的箭头；箭头不自己接点击（键盘上按 Enter 触发的 click 会冒泡到整行、落点在 .tail 里，同样进详情） */}
+          {selectMode ? <span className={"s-check" + (checked ? " on" : "")} aria-hidden />
+            : <button type="button" className="chev" aria-label={`打开 ${row.spelling} 的详情`}><IconChevron /></button>}
+        </div>
       </div>
     </div>
   );
