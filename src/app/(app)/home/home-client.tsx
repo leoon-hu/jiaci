@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
+import InstallTip from "@/components/InstallTip";
 import { coverText } from "@/lib/client/format";
 import { api, localToday } from "@/lib/client/api";
 import "./home.css";
@@ -85,6 +86,8 @@ export default function HomeClient({ initial, initialBook }: { initial: Today; i
               {/* 跑步模式（需求 3.2.6）：有词库就显示；今天没有待学也没有已完成的词时进去是空态 */}
               <Link className="btn btn-secondary btn-lg btn-block mt-12" href="/run" prefetch={false}>🎧 跑步模式</Link>
               <div className="totals"><span>累计已学 <b>{data.totals.learned}</b></span><span>已掌握 <b>{data.totals.mastered}</b></span></div>
+              {/* 安装引导（需求 4.1）放在最下面：不把「开始学习」往下挤，选了词库才出现 */}
+              <InstallTip />
             </div>
           </>
         )}

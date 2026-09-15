@@ -4,9 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import Modal from "@/components/Modal";
+import InstallGuide from "@/components/InstallGuide";
 import { useToast } from "@/components/Toast";
 import { api } from "@/lib/client/api";
 import { resetMeCache, useMe } from "@/lib/client/useMe";
+import { useInstall } from "@/lib/client/install";
 import type { UserSettings } from "@/lib/settings";
 import "./settings.css";
 
@@ -27,6 +29,9 @@ export default function SettingsPage() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [delOpen, setDelOpen] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
+  // 安装为应用（需求 4.1）：首页横幅关掉了也能从这里装；已安装或浏览器不支持时不显示这一行
+  const inst = useInstall();
   useEffect(() => { setS(settings); }, [settings]);
 
   async function save(patch: Partial<UserSettings>) {
@@ -71,6 +76,13 @@ export default function SettingsPage() {
             <div className="section-title">交互</div>
             <div className="list edge">
               <div className="row setting wrapm"><div className="main"><div className="title">主题</div></div><div className="ctl"><Seg value={s.theme} options={[["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]]} onChange={(v) => save({ theme: v })} /></div></div>
+              {inst.mode !== "none" && (
+                <div className="row setting"><div className="main"><div className="title">安装为应用</div><div className="desc">{inst.mobile ? "加到主屏幕，像 App 一样全屏打开" : "安装到电脑桌面，独立窗口打开"}</div></div><div className="ctl">
+                  {inst.mode === "prompt"
+                    ? <button className="btn btn-secondary btn-sm" onClick={() => inst.install()}>安装</button>
+                    : <button className="btn btn-secondary btn-sm" onClick={() => setGuideOpen(true)}>查看步骤</button>}
+                </div></div>
+              )}
               <div className="row setting wrapm"><div className="main"><div className="title">词条资料来源</div><div className="desc">释义、例句、辨析等由哪家模型填充；「自动」按 DeepSeek、OpenAI 顺序取有资料的，没有资料时显示词典释义</div></div><div className="ctl"><Seg value={s.aiProvider} options={[["auto", "自动"], ["deepseek", "DeepSeek"], ["openai", "OpenAI"]]} onChange={(v) => save({ aiProvider: v })} /></div></div>
             </div>
             <div className="section-title">账号</div>
@@ -89,6 +101,7 @@ export default function SettingsPage() {
           </>
         )}
       </main>
+      <InstallGuide open={guideOpen} onClose={() => setGuideOpen(false)} safari={inst.iosSafari} />
       <Modal open={logoutOpen} onClose={() => setLogoutOpen(false)}>
         <h3>退出登录？</h3><p>学习记录已同步到账号，下次用邮箱验证码即可重新登录。</p>
         <div className="actions"><button className="btn btn-secondary" onClick={() => setLogoutOpen(false)}>取消</button><button className="btn btn-danger" onClick={logout}>退出登录</button></div>

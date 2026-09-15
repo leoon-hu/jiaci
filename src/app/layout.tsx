@@ -24,6 +24,11 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 const themeScript = `(function(){try{var t=localStorage.getItem('aiword.theme');if(t==='light'||t==='dark'){document.documentElement.setAttribute('data-theme',t)}}catch(e){}})();`;
 /** 基础 PWA：注册 Service Worker（仅生产环境） */
 const swScript = `if('serviceWorker' in navigator && location.hostname!=='localhost'){window.addEventListener('load',function(){navigator.serviceWorker.register('/sw.js').catch(function(){})})}`;
+/**
+ * 安装引导（需求 4.1）：Chromium 的 beforeinstallprompt 可能在 React 挂载前就抛出，这里先截下来存到 window，
+ * 并压掉浏览器自己的安装小条（由应用内横幅统一引导，见 lib/client/install.ts）；装完记一笔，横幅与设置入口不再出现
+ */
+const installScript = `window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__aiwordInstall=e;window.dispatchEvent(new Event('aiword:install'))});window.addEventListener('appinstalled',function(){window.__aiwordInstall=null;try{localStorage.setItem('aiword.installed','1')}catch(e){}window.dispatchEvent(new Event('aiword:install'))});`;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -31,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <script dangerouslySetInnerHTML={{ __html: swScript }} />
+        <script dangerouslySetInnerHTML={{ __html: installScript }} />
       </head>
       <body>
         <NavTracker />
