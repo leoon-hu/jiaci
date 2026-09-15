@@ -45,6 +45,8 @@ export default function HomeClient({ initial, initialBook }: { initial: Today; i
     <AppShell nav="study">
       <main className="page narrow">
         <div className="page-head" style={{ marginBottom: 8 }}><div><h1 className="page-title">今日学习</h1><p className="page-sub">{dateLine || "\u00a0"}</p></div></div>
+        {/* 安装引导（需求 4.1）：没装成应用时第一次打开就在最上面，不等选词库 */}
+        <InstallTip />
         {err && <div className="err-msg">{err}</div>}
         {!data.hasBook || !book ? (
           <div className="empty-book">
@@ -86,8 +88,6 @@ export default function HomeClient({ initial, initialBook }: { initial: Today; i
               {/* 跑步模式（需求 3.2.6）：有词库就显示；今天没有待学也没有已完成的词时进去是空态 */}
               <Link className="btn btn-secondary btn-lg btn-block mt-12" href="/run" prefetch={false}>🎧 跑步模式</Link>
               <div className="totals"><span>累计已学 <b>{data.totals.learned}</b></span><span>已掌握 <b>{data.totals.mastered}</b></span></div>
-              {/* 安装引导（需求 4.1）放在最下面：不把「开始学习」往下挤，选了词库才出现 */}
-              <InstallTip />
             </div>
           </>
         )}

@@ -390,10 +390,10 @@ kbd{display:inline-block;padding:1px 6px;border:1px solid var(--border-strong);b
 .lp-tip{max-width:820px;margin:0 auto 8px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 12px;border-radius:10px;background:var(--primary-soft);color:var(--primary);font-size:13px;animation:pop .2s ease-out}
 .lp-tip-close{border:0;background:var(--primary);color:#fff;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer;min-height:28px;flex:none}
 /* 安装引导（需求 4.1）：学习首页的横幅与 iOS 的步骤说明 */
-.install-tip{display:flex;align-items:center;gap:12px;margin-top:20px;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--card);animation:pop .2s ease-out}
-.install-tip .logo{flex:none}
+.install-tip{display:flex;align-items:center;gap:10px;margin-bottom:12px;padding:8px 6px 8px 12px;border:1px solid var(--border);border-radius:14px;background:var(--card)}
+.install-tip .icon{flex:none}
 .install-tip .main{flex:1;min-width:0}
-.install-tip .title{font-weight:700;font-size:14px}
+.install-tip .title{font-weight:700;font-size:15px}
 .install-tip .desc{font-size:12px;color:var(--muted);margin-top:2px}
 .install-steps{margin:14px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:12px}
 .install-steps li{display:flex;align-items:flex-start;gap:10px;font-size:14px;line-height:1.5}

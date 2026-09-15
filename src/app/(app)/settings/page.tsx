@@ -76,10 +76,10 @@ export default function SettingsPage() {
             <div className="section-title">交互</div>
             <div className="list edge">
               <div className="row setting wrapm"><div className="main"><div className="title">主题</div></div><div className="ctl"><Seg value={s.theme} options={[["system", "跟随系统"], ["light", "浅色"], ["dark", "深色"]]} onChange={(v) => save({ theme: v })} /></div></div>
-              {inst.mode !== "none" && (
-                <div className="row setting"><div className="main"><div className="title">安装为应用</div><div className="desc">{inst.mobile ? "加到主屏幕，像 App 一样全屏打开" : "安装到电脑桌面，独立窗口打开"}</div></div><div className="ctl">
-                  {inst.mode === "prompt"
-                    ? <button className="btn btn-secondary btn-sm" onClick={() => inst.install()}>安装</button>
+              {inst.kind && (
+                <div className="row setting"><div className="main"><div className="title">安装为应用</div><div className="desc">{inst.touch ? "加到主屏幕，像 App 一样全屏打开" : "安装到电脑桌面，独立窗口打开"}</div></div><div className="ctl">
+                  {inst.kind === "prompt"
+                    ? <button className="btn btn-secondary btn-sm" onClick={() => { void inst.install(); }}>安装</button>
                     : <button className="btn btn-secondary btn-sm" onClick={() => setGuideOpen(true)}>查看步骤</button>}
                 </div></div>
               )}
@@ -101,7 +101,7 @@ export default function SettingsPage() {
           </>
         )}
       </main>
-      <InstallGuide open={guideOpen} onClose={() => setGuideOpen(false)} safari={inst.iosSafari} />
+      <InstallGuide open={guideOpen} onClose={() => setGuideOpen(false)} kind={inst.kind} iosSafari={inst.iosSafari} ipad={inst.ipad} />
       <Modal open={logoutOpen} onClose={() => setLogoutOpen(false)}>
         <h3>退出登录？</h3><p>学习记录已同步到账号，下次用邮箱验证码即可重新登录。</p>
         <div className="actions"><button className="btn btn-secondary" onClick={() => setLogoutOpen(false)}>取消</button><button className="btn btn-danger" onClick={logout}>退出登录</button></div>
