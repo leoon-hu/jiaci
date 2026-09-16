@@ -66,6 +66,8 @@ const send = (method, params = {}) => new Promise((r) => { const i = ++id; pendi
 await send("Page.enable"); await send("Runtime.enable"); await send("Network.enable");
 await send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: SCALE, mobile: true });
 await send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-color-scheme", value: "light" }] });
+// 安装引导横幅（需求 4.1）不进预览图：预先写一个很远的静默期，首页截的是干净的学习首页
+await send("Page.addScriptToEvaluateOnNewDocument", { source: "try{localStorage.setItem('aiword.installTip',String(Date.now()+1e11))}catch(e){}" });
 await send("Network.setCookie", { name: "aiword_session", value: cookie, url: BASE, domain: new URL(BASE).hostname, path: "/", httpOnly: true });
 try {
   for (const [name, path, js] of SHOTS) {
