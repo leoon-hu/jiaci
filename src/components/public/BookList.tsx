@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BOOK_PAGE_SIZE, type PublicBookPage } from "@/lib/public-dict";
 import { bookPageUrl, dictUrl } from "@/lib/dict-url";
+import Ipa from "./Ipa";
 
 const fmt = (n: number) => n.toLocaleString("zh-CN");
 
@@ -38,7 +39,7 @@ export default function BookList({ data }: { data: PublicBookPage }) {
             <Link href={dictUrl(r.spelling)}>
               <span className="n">{first + i}</span>
               <span className="sp" lang="en">{r.display ?? r.spelling}</span>
-              {r.phonetic && <span className="ph" lang="en">{r.phonetic}</span>}
+              {r.phonetic && <Ipa className="ph" text={r.phonetic} />}
               <span className="def">{r.pos && <i className="pos">{r.pos}</i>}{r.def ?? "—"}</span>
             </Link>
           </li>

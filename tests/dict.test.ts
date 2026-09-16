@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseExchange, inflectionOf, selectReason, mergeDictRows, parseTranslation, firstDef, firstDefParts, normalizePos, formatPhonetic, wordCreateData, hasRealPos, looksLikeName, rankBand, wordFreq, type DictRow } from "../src/lib/dict";
+import { parseExchange, inflectionOf, selectReason, mergeDictRows, parseTranslation, firstDef, firstDefParts, normalizePos, formatPhonetic, ipaBody, wordCreateData, hasRealPos, looksLikeName, rankBand, wordFreq, type DictRow } from "../src/lib/dict";
 
 const row = (p: Partial<DictRow> & { word: string }): DictRow => ({ spelling: p.word.toLowerCase(), phonetic: null, definition: null, translation: null, collins: null, oxford: false, tag: null, bnc: null, frq: null, exchange: null, ...p });
 
@@ -40,6 +40,10 @@ describe("词典解析", () => {
     expect(formatPhonetic("əˈbændən")).toBe("/əˈbændən/");
     expect(formatPhonetic("/x/")).toBe("/x/");
     expect(formatPhonetic("")).toBeNull();
+    // 公开页去掉斜杠由 CSS 画（免得搜索引擎把 /ˈlæsi/ 当路径抓）
+    expect(ipaBody("/ˈlæsi/")).toBe("ˈlæsi");
+    expect(ipaBody(" /wɜːrld/ ")).toBe("wɜːrld");
+    expect(ipaBody("əˈbændən")).toBe("əˈbændən");
   });
 });
 

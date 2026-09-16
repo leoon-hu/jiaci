@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import type { PublicWord as Data } from "@/lib/public-dict";
 import { AI_PROVIDER_LABEL } from "@/lib/ai/providers";
 import WordFreqPanel from "@/components/WordFreqPanel";
+import Ipa from "./Ipa";
 import PubTokens from "./PubTokens";
 import SpeakButton from "./SpeakButton";
 
@@ -31,6 +32,7 @@ export default function PublicWord({ data }: { data: Data }) {
     <div className="kv-list">{items.map((f, i) => <div className="kv" key={i}><span className="en" lang="en">{tok(f.w)}{f.pos && <span className="pos-sm">{f.pos}</span>}</span><span className="zh">{f.zh}</span></div>)}</div>
   );
   const related = (items: Array<{ w: string; m: string }>) => items.map((s, i) => <div className="confusable" key={i}><b lang="en">{tok(s.w)}</b><span>{s.m}</span></div>);
+  // 带 next 的登录链接每个词一条，加 nofollow 免得爬虫挨个去抓（登录页的 canonical 也指回 /login）
   const loginNext = `/login?next=${encodeURIComponent(`/word/${encodeURIComponent(data.spelling)}`)}`;
 
   return (
@@ -44,7 +46,7 @@ export default function PublicWord({ data }: { data: Data }) {
       <header className="entry-head">
         <div className="entry-title"><h1 className="spelling" lang="en">{title}</h1></div>
         <div className="entry-sub">
-          {v.phonetic ? <span className="phonetic" lang="en">{v.phonetic.us === v.phonetic.uk ? v.phonetic.us : <>美 {v.phonetic.us} <span className="sep">·</span> 英 {v.phonetic.uk}</>}</span> : <span className="phonetic">—</span>}
+          {v.phonetic ? <span className="phonetic">{v.phonetic.us === v.phonetic.uk ? <Ipa text={v.phonetic.us} /> : <>美 <Ipa text={v.phonetic.us} /> <span className="sep">·</span> 英 <Ipa text={v.phonetic.uk} /></>}</span> : <span className="phonetic">—</span>}
           <SpeakButton text={data.spelling} />
         </div>
       </header>
@@ -125,11 +127,11 @@ export default function PublicWord({ data }: { data: Data }) {
       <aside className="pub-cta card">
         <h2>把 <span lang="en">{title}</span> 加进学习计划</h2>
         <p>AI加词按 FSRS 间隔重复安排复习，每次只需回答「认识」或「模糊」；21 本内置词库，也可以导入自己的词表。免费、开源、无需密码。</p>
-        <div className="land-cta"><Link className="btn btn-primary" href={loginNext}>免费学习这个词</Link><Link className="btn btn-secondary" href="/dict">浏览全部词库</Link></div>
+        <div className="land-cta"><Link className="btn btn-primary" href={loginNext} rel="nofollow">免费学习这个词</Link><Link className="btn btn-secondary" href="/dict">浏览全部词库</Link></div>
       </aside>
 
       <p className="ai-source">
-        词条资料由 {v.provider ? AI_PROVIDER_LABEL[v.provider] : "AI"} 生成，词典数据来自 ECDICT，仅供参考。发现错误？<Link href={loginNext}>登录后可以反馈</Link>。
+        词条资料由 {v.provider ? AI_PROVIDER_LABEL[v.provider] : "AI"} 生成，词典数据来自 ECDICT，仅供参考。发现错误？<Link href={loginNext} rel="nofollow">登录后可以反馈</Link>。
       </p>
     </article>
   );

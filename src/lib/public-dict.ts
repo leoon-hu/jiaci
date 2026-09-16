@@ -3,7 +3,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { AI_PROVIDERS, aiDetailSelect, aiRelationOf, aiRowOf, isFullAiRow, type AiProvider } from "./ai/providers";
 import { wordCore, wordView, type WordView } from "./word-view";
-import { formatPhonetic, wordFreq, type WordFreq } from "./dict";
+import { ipaBody, wordFreq, type WordFreq } from "./dict";
 import { isValidWord, normalizeWord, wordKind, type WordKind } from "./words";
 import { candidateLemmas, tokenize } from "./lemma";
 import { bookByName, type PublicBook } from "./public-books";
@@ -82,7 +82,9 @@ export const loadPublicWord = cache(async (spelling: string): Promise<PublicWord
   if (!word) return null;
   const row = aiRowOf(word, PUBLIC_AI);
   const ai = isFullAiRow(row) ? row : null;
-  const view = wordView(word, ai, PUBLIC_AI);
+  const raw = wordView(word, ai, PUBLIC_AI);
+  // 音标去掉斜杠（页面用 CSS 画）：公开页的数据里不出现「/ˈlæsi/」这种会被搜索引擎当路径去抓的字符串
+  const view: WordView = raw.phonetic ? { ...raw, phonetic: { us: ipaBody(raw.phonetic.us), uk: ipaBody(raw.phonetic.uk) } } : raw;
   const [memberships, links] = await Promise.all([
     prisma.wordbookWord.findMany({ where: { wordId: word.id, wordbook: { type: "builtin" } }, select: { wordbook: { select: { name: true, sortOrder: true } } }, orderBy: { wordbook: { sortOrder: "asc" } } }),
     linkTable(spelling, englishTexts(view)),
@@ -91,6 +93,7 @@ export const loadPublicWord = cache(async (spelling: string): Promise<PublicWord
   return { id: word.id, spelling, display: word.display, kind: wordKind(spelling), view, freq: wordFreq(word), books, links, updatedAt: ai?.generatedAt ?? null };
 });
 
+/** phonetic 不带斜杠（见 loadPublicWord） */
 export type PublicBookRow = { spelling: string; display: string | null; phonetic: string | null; pos: string; def: string | null };
 export type PublicBookPage = { book: PublicBook; wordCount: number; page: number; pages: number; rows: PublicBookRow[] };
 
@@ -112,7 +115,8 @@ export const loadPublicBook = cache(async (book: PublicBook, page: number): Prom
     rows: rows.map(({ word: w }) => {
       const ai = w[rel];
       const core = wordCore(w, ai);
-      return { spelling: w.spelling, display: w.display, phonetic: ai?.phoneticUs?.trim() || formatPhonetic(w.phonetic), pos: core.pos, def: core.def };
+      const ph = ai?.phoneticUs?.trim() || w.phonetic?.trim() || null;
+      return { spelling: w.spelling, display: w.display, phonetic: ph ? ipaBody(ph) : null, pos: core.pos, def: core.def };
     }),
   };
 });

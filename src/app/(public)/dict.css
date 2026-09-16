@@ -9,6 +9,8 @@
 /* 词条正文：标题用 h1 / h2，样式对齐登录版的 .spelling / h4 */
 .pub-entry .entry-title h1{margin:0;font-size:36px;font-weight:700;line-height:1.15;word-break:break-word}
 .pub-entry .entry-sub .sep{margin:0 4px;color:var(--faint)}
+/* 音标的斜杠由 CSS 画，页面文本里不出现「/音标/」（见 components/public/Ipa.tsx） */
+.ipa::before,.ipa::after{content:"/"}
 .pub-entry .entry-section{margin-top:24px}
 .pub-entry .entry-section > h2{margin:0 0 8px;font-size:12px;color:var(--muted);font-weight:700;letter-spacing:.6px;display:flex;align-items:center;gap:6px}
 .pub-entry .entry-section > h2 .ai{background:linear-gradient(90deg,#7c5cff,#4f6df5);color:#fff;padding:1px 6px;border-radius:6px;font-size:10px;letter-spacing:0}

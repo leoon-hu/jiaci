@@ -71,6 +71,10 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
   log.push(`公开页：词库第 2 页 → ${b.status} ${b.status === 200 && b.body.includes("雅思核心") ? "✓" : "✗"}；/1 归到无页码地址 ${(await get("/dict/book/ielts-core/1")).status === 308 ? "✓" : "✗"}`);
   const r = await get("/word/give%20up");
   log.push(`公开页：匿名访问 /word/give%20up → ${r.status} 到 ${r.location} ${r.status === 307 && r.location.endsWith("/dict/give_up") ? "✓" : "✗"}；匿名访问 /home 仍跳登录 ${(await get("/home")).location.includes("/login") ? "✓" : "✗"}`);
+  // 收录卫生：不存在的路径 404 不跳登录、登录页 canonical 不带 next、公开页里没有「/音标/」这种会被爬虫当路径的字符串
+  const nx = await get("/%CB%88l%C3%A6si");
+  const lg = await get("/login?next=%2Fhome");
+  log.push(`公开页：未知路径 → ${nx.status} ${nx.status === 404 ? "✓" : "✗"}；登录页 canonical 指回 /login ${/rel="canonical" href="[^"]*\/login"/.test(lg.body) ? "✓" : "✗"}；词库页没有「/音标/」 ${!/\/[ˈˌəɪæʊɒɜ][^"<\\]*\//.test(b.body) && b.body.includes('class="ipa ph"') ? "✓" : "✗"}`);
   const sm = await get("/sitemap.xml");
   const shard = await get("/sitemap/words-0.xml");
   log.push(`公开页：sitemap 索引 ${sm.status === 200 && sm.body.includes("/sitemap/pages.xml") && sm.body.includes("/sitemap/words-0.xml") ? "✓" : "✗"}，分片有词条 ${shard.status === 200 && shard.body.includes("/dict/abandon") ? "✓" : "✗"}，robots 放行 /dict/ ${(await get("/robots.txt")).body.includes("Allow: /dict/") ? "✓" : "✗"}`);

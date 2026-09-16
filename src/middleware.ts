@@ -1,12 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { classifyPath } from "@/lib/routes";
 
 /** 未登录仅可见登录页、静态页与公开词条页（需求 A5）：这里只检查 Cookie 是否存在，具体有效性由页面 / API 校验 */
-const PUBLIC = [/^\/login/, /^\/legal\//, /^\/api\//, /^\/_next\//, /^\/manifest\.webmanifest$/, /^\/icons\//, /^\/favicon\.ico$/, /^\/icon\.svg$/, /^\/apple-touch-icon\.png$/, /^\/logo-wordmark\.svg$/, /^\/sw\.js$/,
-  // 落地页用的截图、分享卡片图与爬虫入口
-  /^\/shots\//, /^\/og\.png$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/sitemap\//,
-  // 匿名可看的词条与词库页（供搜索引擎收录）
-  /^\/dict(\/|$)/];
-
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   // 把路径透给 Server Component：会话过期（Cookie 还在但已失效）时页面要靠它拼出带 next 的登录地址（审计 NU09）
@@ -15,8 +10,8 @@ export function middleware(req: NextRequest) {
     headers.set("x-pathname", pathname);
     return NextResponse.next({ request: { headers } });
   };
-  if (PUBLIC.some((re) => re.test(pathname))) return pass();
-  if (pathname === "/") return pass();
+  // 不存在的路径不跳登录，交给 Next 出 404（登录与否都一样）
+  if (classifyPath(pathname) !== "app") return pass();
   if (!req.cookies.get("aiword_session")?.value) {
     // 反向代理后 req.nextUrl 的主机是内部的 localhost:3000，跳转地址要按代理传来的协议与主机拼。
     // 主机名来自请求头、攻击者可控，所以配了 SITE_HOST 就只认它，避免把登录页指到别的站（审计 F006）

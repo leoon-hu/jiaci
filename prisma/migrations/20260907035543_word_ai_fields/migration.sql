@@ -56,6 +56,6 @@ COMMENT ON COLUMN "word"."ai_cognates" IS 'AI：同根词 [{w, pos, zh}]，0–6
 COMMENT ON COLUMN "word"."ai_mnemonic" IS 'AI：助记（≤ 120 字）';
 COMMENT ON COLUMN "word"."ai_etymology" IS 'AI：词源与构词 {origin, parts: [{part, meaning}]}；构词不透明的词为空';
 COMMENT ON COLUMN "word"."ai_generated_at" IS 'AI 字段最近一次填充时间；空 = 未填充';
-COMMENT ON COLUMN "word"."ai_source" IS 'AI 字段来源：模型@提示词版本（如 claude-sonnet-4-6@1），运营手改为 manual';
+COMMENT ON COLUMN "word"."ai_source" IS 'AI 字段来源：模型@提示词版本（如 deepseek-chat@1），运营手改为 manual';
 COMMENT ON TABLE "word" IS '全局单词表：同一拼写只有一条；词典字段来自 ECDICT，ai_* 字段由运营脚本填充，所有用户共用';
 COMMENT ON TABLE "wordbook" IS '词库表：内置 / 导入 / 自建';

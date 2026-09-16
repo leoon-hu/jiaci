@@ -183,3 +183,8 @@ export function formatPhonetic(p: string | null | undefined): string | null {
   if (!s) return null;
   return s.startsWith("/") ? s : `/${s}/`;
 }
+
+/** 去掉音标两头的斜杠（公开页用 CSS 画斜杠，见 components/public/Ipa.tsx） */
+export function ipaBody(p: string): string {
+  return p.trim().replace(/^\/+|\/+$/g, "").trim();
+}
