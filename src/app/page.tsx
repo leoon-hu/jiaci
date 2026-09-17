@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import Logo from "@/components/Logo";
+import SiteFooter from "@/components/public/SiteFooter";
 import "./landing.css";
 
 const REPO = "https://github.com/leoon-hu/jiaci";
@@ -81,13 +82,7 @@ export default async function Index() {
         </section>
       </main>
 
-      <footer className="land-foot">
-        <span>AI加词</span>
-        <Link href="/dict">词典</Link>
-        <Link href="/legal/privacy">隐私政策</Link>
-        <Link href="/legal/terms">服务条款</Link>
-        <a href={REPO} target="_blank" rel="noopener">GitHub</a>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

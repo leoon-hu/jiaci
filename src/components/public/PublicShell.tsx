@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Logo from "@/components/Logo";
+import SiteFooter from "@/components/public/SiteFooter";
 import "@/app/landing.css";
 import "@/app/(public)/dict.css";
 
@@ -18,13 +19,7 @@ export default function PublicShell({ children }: { children: React.ReactNode })
         </nav>
       </header>
       <main className="pub-main">{children}</main>
-      <footer className="land-foot">
-        <span>AI加词</span>
-        <Link href="/dict">词典</Link>
-        <Link href="/legal/privacy">隐私政策</Link>
-        <Link href="/legal/terms">服务条款</Link>
-        <a href={REPO} target="_blank" rel="noopener">GitHub</a>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

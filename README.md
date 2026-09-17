@@ -118,6 +118,12 @@ npm run wordbooks:build
 - 考试词表参照公开大纲整理；各词表的出处写在 `lists/` 对应文件的头部。
 - 间隔重复算法为 [FSRS](https://github.com/open-spaced-repetition/ts-fsrs)（`ts-fsrs`，MIT）。
 
+## 同一作者的其它学习应用
+
+- [同步练](https://tongbulian.jiaci.app)：人教版小学同步练习，按单元随机出题、汉字注音、题目朗读。
+- [拼音学习机](https://pinyin.jiaci.app)：给学拼音的孩子的点读 / 拼读 / 跟读 / 测验键盘，真人录音。
+- [识字卡片](https://kapian.jiaci.app)：2–4 岁看图听音认知卡片，中英文、离线。
+
 ## 许可
 
 代码与数据结构均以 [MIT](LICENSE) 许可开源：应用源码、`prisma/` 下的数据库表结构与迁移、`src/lib/ai/schema.ts` 的词条字段契约、`scripts/` 下的离线脚本都可以自由使用、修改与再分发。`lists/` 下词表文件与词典数据的出处及各自的许可见上一节。

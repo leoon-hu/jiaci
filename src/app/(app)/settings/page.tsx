@@ -10,6 +10,7 @@ import { api } from "@/lib/client/api";
 import { resetMeCache, useMe } from "@/lib/client/useMe";
 import { useInstall } from "@/lib/client/install";
 import type { UserSettings } from "@/lib/settings";
+import { SISTER_SITES } from "@/lib/sites";
 import "./settings.css";
 
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: Array<[T, string]>; onChange: (v: T) => void }) {
@@ -97,6 +98,13 @@ export default function SettingsPage() {
               <div className="row setting"><div className="main"><div className="title">版本</div></div><div className="ctl muted small">v0.1.0</div></div>
               <Link className="row setting link" href="/legal/privacy"><div className="main"><div className="title">隐私政策</div></div><span className="chev">›</span></Link>
               <Link className="row setting link" href="/legal/terms"><div className="main"><div className="title">服务条款</div></div><span className="chev">›</span></Link>
+            </div>
+            {/* 登录后看不到落地页，另外三个站的链接在这里再给一份（需求 4.1「四个站互相链接」） */}
+            <div className="section-title">更多应用</div>
+            <div className="list edge">
+              {SISTER_SITES.map((site) => (
+                <a key={site.url} className="row setting link" href={site.url} target="_blank" rel="noopener"><div className="main"><div className="title">{site.name}</div><div className="desc">{site.desc}</div></div><span className="chev">↗</span></a>
+              ))}
             </div>
           </>
         )}

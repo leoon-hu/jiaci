@@ -28,8 +28,12 @@
 .land-why p{color:var(--muted)}
 .land-why p:last-child{margin-bottom:0}
 
-.land-foot{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;font-size:13px;color:var(--faint);margin-top:40px}
+.land-foot{display:flex;flex-direction:column;align-items:center;gap:10px;font-size:13px;color:var(--faint);margin-top:40px}
+.land-foot-row{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
 .land-foot a{color:var(--muted)}
+/* 另外三个站：名字后跟一句小字说明 */
+.land-sites a{font-weight:500}
+.land-sites a small{font-size:12px;font-weight:400;color:var(--faint);margin-left:4px}
 
 @media (max-width:767px){
   .land{padding:0 16px 32px}
