@@ -390,9 +390,13 @@ log.push(`详情：短语 give up → 标题「${await evalJs("document.querySel
   const ready = await waitFor("document.querySelector('.run-start')", 120000, 500);
   const summary = await evalJs("document.querySelector('.run-summary')?.textContent");
   log.push(`跑步：进页面先提示、不自动下载 ${prompt && !autoStarted ? "✓" : "✗"}；点「准备音频」后准备完成「${summary}」 ${ready && /^今天 \d+ 个词/.test(summary ?? "") ? "✓" : "✗"}`);
+  // 保持亮屏（默认开）：包一层 navigator.wakeLock.request 数申请 / 释放次数
+  await evalJs("(()=>{const wl=navigator.wakeLock; if(!wl) return; window.__wl={req:0,rel:0}; const orig=wl.request.bind(wl); wl.request=async(t)=>{window.__wl.req++; const s=await orig(t); const r=s.release.bind(s); s.release=()=>{window.__wl.rel++; return r();}; return s;}})()");
   const start = await rect(".run-start");
   await mouse("mousePressed", start.x + start.w / 2, start.y + start.h / 2); await mouse("mouseReleased", start.x + start.w / 2, start.y + start.h / 2);
   const playing = await waitFor("document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 8000);
+  const wlAcquired = await waitFor("window.__wl && window.__wl.req >= 1", 3000);
+  const wlRowOn = await evalJs("(()=>{const r=[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('保持亮屏')); return r ? r.querySelector('input[type=checkbox]').checked : null})()");
   const w0 = await evalJs("document.querySelector('.run-word')?.textContent");
   // 首屏：例句（默认两条，中英对照、本词高亮）与四个并排大按钮（上一个 / 暂停 / 停止 / 下一个），整块撑满一屏
   const exN = await evalJs("document.querySelectorAll('.run-example').length");
@@ -415,6 +419,11 @@ log.push(`详情：短语 give up → 标题「${await evalJs("document.querySel
   await sleep(6000);
   const stillAfterTop = await evalJs("!!document.querySelector('.run-toggle[aria-label=\"暂停\"]') && !document.querySelector('.run-hint')?.textContent.includes('补充')");
   log.push(`跑步：例句改成 3 条 → 显示 3 条且仍在播 ${topped ? "✓" : "✗"}，补下载结束后仍在播 ${stillAfterTop ? "✓" : "✗"}`);
+  // 关掉「播放时保持亮屏」→ 释放唤醒锁（播放不受影响）
+  await evalJs("[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('保持亮屏'))?.querySelector('input[type=checkbox]')?.click()");
+  const wlReleased = await waitFor("window.__wl && window.__wl.rel >= 1", 3000);
+  const wlSaved = await evalJs("fetch('/api/settings').then(r=>r.json()).then(s=>s.runKeepAwake)");
+  log.push(`跑步：播放中申请了屏幕唤醒锁 ${wlAcquired ? "✓" : "✗"}，设置行默认开 ${wlRowOn === true ? "✓" : "✗"}；关掉后释放 ${wlReleased ? "✓" : "✗"}、随账号保存 ${wlSaved === false ? "✓" : "✗"}`);
   await evalJs("[...[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('读例句')).querySelectorAll('.seg button')].find(b=>b.textContent==='不读')?.click()"); await sleep(1500);
   const stillPlaying = await waitFor("document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 3000);
   const exGone = await evalJs("document.querySelectorAll('.run-example').length");
@@ -428,7 +437,7 @@ log.push(`详情：短语 give up → 标题「${await evalJs("document.querySel
   await evalJs("[...document.querySelectorAll('.modal .btn-danger')].find(b=>b.textContent==='停止')?.click()"); await sleep(400);
   const gone = await waitFor("!document.querySelector('.run-pill')", 3000);
   log.push(`跑步：关掉例句后仍在播 ${stillPlaying ? "✓" : "✗"}、例句不再显示 ${exGone === 0 ? "✓" : "✗"}，设置随账号保存 ${saved === "off" ? "✓" : "✗"}；回首页有小条「${pill}」 ${pill ? "✓" : "✗"}，小条上停止先确认 ${asked ? "✓" : "✗"}、确认后消失 ${gone ? "✓" : "✗"}`);
-  await evalJs("fetch('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({runSentence:'both',runExamples:2})})");
+  await evalJs("fetch('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({runSentence:'both',runExamples:2,runKeepAwake:true})})");
 }
 // 清理测试词库
 if (fixture.id) await evalJs(`fetch('/api/wordbooks/${fixture.id}',{method:'DELETE'}).then(r=>r.status)`);

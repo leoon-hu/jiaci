@@ -29,6 +29,8 @@ export const SettingsSchema = z.object({
   runExamples: z.number().int().min(1).max(3),
   runGap: z.number().int().min(1).max(5),
   runSpeed: z.number().min(0.8).max(1.2),
+  /** 播放时保持亮屏：在跑步页播放中申请屏幕唤醒锁；浏览器不支持时页面不显示这一项 */
+  runKeepAwake: z.boolean(),
 });
 export type UserSettings = z.infer<typeof SettingsSchema>;
 
@@ -38,7 +40,7 @@ export async function defaultSettings(): Promise<UserSettings> {
     reviewLimit: await getConfigInt("study.default_review_limit"),
     order: "review-first", newOrder: "book", accent: "us", voice: "female", exSpeaker: "right",
     autoPlay: true, autoReadDetail: true, theme: "system", listMode: "both", aiProvider: "auto",
-    runWords: 50, runRepeat: 2, runDef: true, runSentence: "both", runExamples: 2, runGap: 2, runSpeed: 1,
+    runWords: 50, runRepeat: 2, runDef: true, runSentence: "both", runExamples: 2, runGap: 2, runSpeed: 1, runKeepAwake: true,
   };
 }
 

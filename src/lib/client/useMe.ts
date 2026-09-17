@@ -6,7 +6,7 @@ import type { UserSettings } from "@/lib/settings";
 
 export type Me = { id: string; email: string; settings: UserSettings; currentWordbookId: string | null; termsOutdated?: boolean };
 
-const DEFAULTS: UserSettings = { newWords: 20, reviewLimit: 200, order: "review-first", newOrder: "book", accent: "us", voice: "female", exSpeaker: "right", autoPlay: true, autoReadDetail: true, theme: "system", listMode: "both", aiProvider: "auto", runWords: 50, runRepeat: 2, runDef: true, runSentence: "both", runExamples: 2, runGap: 2, runSpeed: 1 };
+const DEFAULTS: UserSettings = { newWords: 20, reviewLimit: 200, order: "review-first", newOrder: "book", accent: "us", voice: "female", exSpeaker: "right", autoPlay: true, autoReadDetail: true, theme: "system", listMode: "both", aiProvider: "auto", runWords: 50, runRepeat: 2, runDef: true, runSentence: "both", runExamples: 2, runGap: 2, runSpeed: 1, runKeepAwake: true };
 
 /**
  * 模块级缓存：只在同一个页面生命周期内有效。退出 / 注销 / 换账号登录都是客户端路由跳转、页面不刷新，

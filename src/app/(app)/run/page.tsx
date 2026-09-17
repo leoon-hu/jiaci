@@ -8,6 +8,7 @@ import { api, localToday } from "@/lib/client/api";
 import { useMe } from "@/lib/client/useMe";
 import { voiceKeyOf } from "@/lib/client/speech";
 import { applyOptions, jumpTo, next, pause, play, prepare, prev, useRunPlayer, type RunOptions, type RunWord } from "@/lib/client/run-player";
+import { useScreenWakeLock, useWakeLockSupported } from "@/lib/client/wake-lock";
 import { isHeadwordToken, tokenize } from "@/lib/lemma";
 import type { UserSettings } from "@/lib/settings";
 import "./run.css";
@@ -48,6 +49,7 @@ export default function RunPage() {
   const [embedded, setEmbedded] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopAsk, setStopAsk] = useState(false);
+  const wakeLockOk = useWakeLockSupported();
 
   const load = () => fetchRun(settings.runWords).then(setData).catch((e) => setLoadErr((e as Error).message));
   // 按设置里的词数取今天的内容：设置还没从账号读回来时是默认值，读回来后（或在下面改了词数）再取一次
@@ -85,6 +87,9 @@ export default function RunPage() {
   const position = st.index >= 0 ? `${st.index + 1} / ${words.length}` : words.length ? `${words.length} 词` : "";
   /** 改设置后在补下载片段（播放不停） */
   const toppingUp = active && st.progress.done < st.progress.total;
+  // 播放时保持亮屏：只在本页播放中持有唤醒锁（离开本页、暂停、停止都放掉；小条在别处照播但不需要亮屏）
+  const keepAwake = wakeLockOk && settings.runKeepAwake;
+  useScreenWakeLock(playing && keepAwake);
 
   let hero: React.ReactNode;
   if (loadErr && !words.length) hero = <div className="run-hero"><p>今天的内容没能加载出来</p><p className="err-msg">{loadErr}</p><button className="btn btn-primary" onClick={() => { setLoadErr(""); load(); }}>重新加载</button></div>;
@@ -146,7 +151,7 @@ export default function RunPage() {
       )}
       <div className="run-bottom">
         {st.error && <p className="err-msg center">{st.error}</p>}
-        <p className="small muted run-hint">{toppingUp ? `正在补充音频 ${st.progress.done} / ${st.progress.total}，播放不受影响` : playing ? "熄屏也会继续播放；锁屏和耳机上可暂停、切词" : "已暂停"}</p>
+        <p className="small muted run-hint">{toppingUp ? `正在补充音频 ${st.progress.done} / ${st.progress.total}，播放不受影响` : playing ? (keepAwake ? "屏幕会保持常亮，锁屏后也继续播放；锁屏和耳机上可暂停、切词" : "熄屏也会继续播放；锁屏和耳机上可暂停、切词") : "已暂停"}</p>
         <div className="run-controls">
           <button className="run-ctl" type="button" onClick={prev} aria-label="上一个"><IconPrev /><span>上一个</span></button>
           <button className="run-ctl main run-toggle" type="button" onClick={playing ? pause : play} aria-label={playing ? "暂停" : "继续"}>{playing ? <IconPause /> : <IconPlay />}<span>{playing ? "暂停" : "继续"}</span></button>
@@ -179,6 +184,7 @@ export default function RunPage() {
             <div className="row setting"><div className="main"><div className="title">每个词几条例句</div></div><div className="ctl"><Seg value={settings.runExamples} options={[[1, "1"], [2, "2"], [3, "3"]]} onChange={(v) => save({ runExamples: v })} /></div></div>
             <div className="row setting"><div className="main"><div className="title">词与词之间停几秒</div></div><div className="ctl"><Seg value={settings.runGap} options={[[1, "1"], [2, "2"], [3, "3"], [4, "4"], [5, "5"]]} onChange={(v) => save({ runGap: v })} /></div></div>
             <div className="row setting"><div className="main"><div className="title">语速</div></div><div className="ctl"><Seg value={settings.runSpeed} options={SPEEDS.map((v) => [v, v === 1 ? "1.0" : String(v)])} onChange={(v) => save({ runSpeed: v })} /></div></div>
+            {wakeLockOk && <div className="row setting"><div className="main"><div className="title">播放时保持亮屏</div></div><div className="ctl"><Switch checked={settings.runKeepAwake} onChange={(v) => save({ runKeepAwake: v })} /></div></div>}
           </div>
           <div className="section-title">今天的词 <span className="muted" style={{ fontWeight: 400 }}>{words.length}</span></div>
           <div className="list run-list">
