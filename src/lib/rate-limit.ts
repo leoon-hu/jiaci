@@ -27,6 +27,14 @@ export function allow(key: string, limit: number, windowMs: number): boolean {
   return true;
 }
 
+/** 超限时还要等多久（毫秒）才会空出一个名额：最早那次命中滑出窗口的时刻；没超限返回 0 */
+export function retryAfterMs(key: string, limit: number, windowMs: number): number {
+  const now = Date.now();
+  const arr = (buckets.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (arr.length < limit) return 0;
+  return Math.max(1, arr[arr.length - limit] + windowMs - now);
+}
+
 /** 只看是否超限，不记命中 */
 export function isOver(key: string, limit: number, windowMs: number): boolean {
   const now = Date.now();

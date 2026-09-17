@@ -13,30 +13,15 @@ import { handle } from "@/lib/api";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { audioDir, ensureClip, ttsConfig, voiceAllowed } from "@/lib/tts";
-import { allow } from "@/lib/rate-limit";
+import { allow, retryAfterMs } from "@/lib/rate-limit";
 import { getConfigInt } from "@/lib/config";
 import { clipRelPath, parseAudioPath } from "@/lib/tts/text";
 
 export const runtime = "nodejs";
 
-const fallback = (status = 404) => new Response(null, { status, headers: { "X-Audio-Fallback": "webspeech", "Cache-Control": "no-store" } });
-
-/**
- * 按需合成限速：每个登录用户每分钟最多 60 次。
- * 原来按 X-Forwarded-For 首段计数，而 nginx 用 $proxy_add_x_forwarded_for 把客户端自带的值放在最前，
- * 换个假 IP 就能绕过；接口本就需要登录，按用户计更准，NAT 后的用户也不会被邻居连累（审计 F012）。
- */
-const SYNTH_PER_MINUTE = 60;
-const hits = new Map<string, number[]>();
-function allowSynth(key: string) {
-  const now = Date.now();
-  const arr = (hits.get(key) ?? []).filter((t) => now - t < 60_000);
-  if (arr.length >= SYNTH_PER_MINUTE) { hits.set(key, arr); return false; }
-  arr.push(now); hits.set(key, arr);
-  // 超量时按最近活跃淘汰，不要整表清零——那等于把所有人的计数一起清掉
-  if (hits.size > 5000) for (const [k, v] of hits) { if (!v.length || now - v[v.length - 1] > 60_000) hits.delete(k); }
-  return true;
-}
+const fallback = (status = 404, extra: Record<string, string> = {}) => new Response(null, { status, headers: { "X-Audio-Fallback": "webspeech", "Cache-Control": "no-store", ...extra } });
+/** 限速 429 带 Retry-After（秒）：跑步模式准备时按它等，不用每 5 秒盲目重试 */
+const tooMany = (ms: number) => fallback(429, { "Retry-After": String(Math.max(1, Math.ceil(ms / 1000))) });
 
 /** 音频目录所在分区的剩余空间是否还够（statfs 拿不到就放行，不因为探测失败而停掉功能） */
 async function hasFreeSpace(minMb: number): Promise<boolean> {
@@ -104,9 +89,14 @@ export const GET = handle(async (req, { params }: { params: Promise<{ path: stri
     // 按需合成只给登录用户：匿名访客（公开词条页）拿不到现成文件就退到 Web Speech，接口不能被当成免费 TTS
     const user = await getCurrentUser();
     if (!user) return fallback();
-    if (!allowSynth(user.id)) return fallback(429);
-    // 每人每天的合成段数上限：整张词典 × 4 音色远大于磁盘，光靠每分钟限速拦不住（审计 NO01）
-    if (!allow(`synth-day:${user.id}`, await getConfigInt("tts.daily_synth_per_user"), 86_400_000)) return fallback(429);
+    // 按需合成限速按登录用户计（不按 X-Forwarded-For：nginx 把客户端自带的值放在最前，换个假 IP 就能绕过；
+    // 按用户计更准，NAT 后的用户也不会被邻居连累，审计 F012）：每分钟 tts.synth_per_minute 段——
+    // 跑步模式准备一轮要现合成几百段例句译文，这个数别设太小，合成本身另有并发闸门；
+    // 每人每天 tts.daily_synth_per_user 段：整张词典 × 4 音色远大于磁盘，光靠每分钟限速拦不住（审计 NO01）
+    const perMinute = await getConfigInt("tts.synth_per_minute"), perDay = await getConfigInt("tts.daily_synth_per_user");
+    const minKey = `synth-min:${user.id}`, dayKey = `synth-day:${user.id}`;
+    if (!allow(minKey, perMinute, 60_000)) return tooMany(retryAfterMs(minKey, perMinute, 60_000));
+    if (!allow(dayKey, perDay, 86_400_000)) return tooMany(retryAfterMs(dayKey, perDay, 86_400_000));
     // 磁盘余量守卫：音频目录与 Postgres 同盘，写满会让数据库先崩
     if (!(await hasFreeSpace(await getConfigInt("tts.min_free_mb")))) {
       console.warn("[audio] 磁盘剩余空间不足，暂停按需合成");

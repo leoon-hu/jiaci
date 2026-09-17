@@ -78,9 +78,10 @@
 @media (max-width:767px){.s-content .due{display:none}}
 .pie{width:16px;height:16px;border-radius:50%;border:2px solid var(--c);box-sizing:border-box;flex:none;display:inline-block;background:conic-gradient(var(--c) calc(var(--p) * 1%), transparent 0)}
 .pie.st-mastered{--c:var(--st-green)}.pie.st-learning{--c:var(--st-yellow)}.pie.st-new{--c:var(--st-red)}.pie.st-none{--c:var(--st-grey)}
-/* 拖动时露出的操作按钮条（顺序固定，等宽铺满整行；把词拖到哪个上面松手就执行哪个） */
-.s-opts{position:absolute;inset:0;display:none}
-.srow.dragging .s-opts{display:flex}
+/* 拖动时露出的操作按钮条（顺序固定，等宽铺满整行；把词拖到哪个上面松手就执行哪个）。
+   不拖时用 visibility 藏而不是 display:none：拖拽判定按每个按钮的真实位置量，得一直有布局（第一下移动时还没来得及重画） */
+.s-opts{position:absolute;inset:0;display:flex;visibility:hidden}
+.srow.dragging .s-opts{visibility:visible}
 .s-opt{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#fff;font-size:13px;font-weight:700;filter:brightness(.82);transition:filter .12s}
 .s-opt small{font-size:10px;font-weight:500;opacity:.85;white-space:nowrap}
 @media (max-width:359px){.s-opt small{display:none}}

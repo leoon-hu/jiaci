@@ -213,10 +213,10 @@ async function main() {
         ok++; consecutiveFail = 0; consecutiveBad = 0;
         let audioNote = "";
         if (tts) {
-          // 登记本词、例句与中文释义，顺带合成音频（已有文件跳过）
+          // 登记本词、例句（含译文）与中文释义，顺带合成音频（已有文件跳过；译文一词三五段，跟着一起合成）
           const targets = targetsOfWord(w.spelling, [{ examples: d.examples, core: d.core }]);
           await withDb(() => registerTexts(prisma, targets));
-          const st = await generateClips(tts, jobsOf(tts, targets), prisma);
+          const st = await generateClips(tts, jobsOf(tts, targets, undefined, true), prisma);
           clips.created += st.created; clips.skipped += st.skipped; clips.failed += st.failed;
           audioNote = `，音频 +${st.created}${st.failed ? `（失败 ${st.failed}）` : ""}`;
         }

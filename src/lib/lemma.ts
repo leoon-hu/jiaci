@@ -48,6 +48,26 @@ export function candidateLemmas(token: string): string[] {
   return Array.from(new Set(c.filter((x) => x.length >= 2 || (x === t && x.length === 1))));
 }
 
+/** 不规则表里的原形（went → go）；不在表里返回 null */
+export const irregularLemma = (token: string): string | null => IRREGULAR[token.toLowerCase().replace(/[’']s?$/, "")] ?? null;
+
+/**
+ * 例句里的一个 token 是不是本词（或其变形）：详情页 WordTokens 加粗、跑步页高亮共用这一条规则。
+ * 本词（短语按各词）原样出现；不规则变形（went ↔ go）；规则去后缀后等于本词的某个词（单字母的词不认，
+ * 免得 as → a 这种把短词全点亮）；4 个字母以上的单词还认「本词开头、最多多 3 个字母」的派生（abandon → abandoning；
+ * 短词不认，不然 do 会点亮 dog）。
+ */
+export function isHeadwordToken(token: string, headword: string): boolean {
+  const base = token.toLowerCase();
+  const parts = headword.toLowerCase().split(" ");
+  if (parts.includes(base)) return true;
+  const irr = irregularLemma(base);
+  if (irr && parts.includes(irr)) return true;
+  const lemmas = candidateLemmas(base);
+  if (parts.some((p) => p.length >= 2 && lemmas.includes(p))) return true;
+  return parts.length === 1 && parts[0].length >= 4 && base.startsWith(parts[0]) && base.length - parts[0].length <= 3;
+}
+
 export const WORD_TOKEN_RE = /[A-Za-z][A-Za-z’'-]*/g;
 
 /** 把文本切成 token（英文单词）与非 token 片段，供着色渲染 */

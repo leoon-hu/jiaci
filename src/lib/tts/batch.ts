@@ -7,11 +7,15 @@ import { wordCore } from "../word-view";
 import { ensureClip, type TtsConfig } from "./index";
 import { VOICE_KEYS, normalizeText, textHash, type AudioKind, type VoiceKey } from "./text";
 
-export type AudioTarget = { kind: AudioKind; text: string };
+/**
+ * 要朗读的一段文本。translation = 例句的中文译文：跑步模式读完英文例句接着读它（需求 3.2.6），
+ * 与中文释义同一种音频（definition 类型、中文音色），只是量大（每词三五句），批量生成时默认不带
+ */
+export type AudioTarget = { kind: AudioKind; text: string; translation?: boolean };
 export type AudioJob = AudioTarget & { voice: string };
 
 /**
- * 一词要朗读的文本：拼写 + 各厂商行的例句（examples[].en）+ 中文释义，各自去重。
+ * 一词要朗读的文本：拼写 + 各厂商行的例句（examples[].en）与其译文（examples[].zh）+ 中文释义，各自去重。
  * 释义按 wordCore 的口径取，与列表行显示的 def 完全一致：各厂商的 core 都生成一份（用户可以切「词条资料来源」，
  * 挑中哪家就播哪家的），一家都没有时才用词典 translation 的第一段兜底。
  */
@@ -27,6 +31,8 @@ export function targetsOfWord(
     for (const e of parseAi(AiExamplesSchema, r?.examples) ?? []) {
       const t = normalizeText(e.en);
       if (t && !seen.has(t)) { seen.add(t); out.push({ kind: "sentence", text: t }); }
+      const zh = normalizeText(e.zh);
+      if (zh && !defs.has(zh)) { defs.add(zh); out.push({ kind: "definition", text: zh, translation: true }); }
     }
     const core = normalizeText(r?.core ?? "");
     if (core && !defs.has(core)) { defs.add(core); out.push({ kind: "definition", text: core }); }
@@ -44,10 +50,14 @@ export async function registerTexts(db: PrismaClient, targets: AudioTarget[]) {
   await db.audioText.createMany({ data: targets.map((t) => ({ textHash: textHash(t.text), kind: t.kind, text: t.text })), skipDuplicates: true });
 }
 
-/** 文本 → 要生成的音色：单词四种都生成，例句只生成 batchVoices（或指定的 only），中文释义只有中文音色一种 */
-export function jobsOf(cfg: TtsConfig, targets: AudioTarget[], only?: VoiceKey[]): AudioJob[] {
+/**
+ * 文本 → 要生成的音色：单词四种都生成，例句只生成 batchVoices（或指定的 only），中文释义只有中文音色一种；
+ * 例句译文只在 translations = true 时生成（不生成也已登记，用户跑步时按需合成）
+ */
+export function jobsOf(cfg: TtsConfig, targets: AudioTarget[], only?: VoiceKey[], translations = false): AudioJob[] {
   const jobs: AudioJob[] = [];
   for (const t of targets) {
+    if (t.translation && !translations) continue;
     if (t.kind === "definition") { jobs.push({ ...t, voice: cfg.defVoice }); continue; }
     const keys = t.kind === "word" ? [...VOICE_KEYS] : (only ?? cfg.batchVoices);
     for (const k of keys) jobs.push({ ...t, voice: cfg.voices[k] });

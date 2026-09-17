@@ -559,7 +559,7 @@ model DictEntry {
 model AudioText {
   /// 规范化文本（去首尾空白、合并连续空格）的 SHA-1
   textHash  String      @id @map("text_hash")
-  /// 类型：word 单词 / sentence 例句 / definition 中文释义
+  /// 类型：word 单词 / sentence 例句 / definition 中文（释义，以及跑步模式读的例句译文）
   kind      AudioKind
   /// 原文（单词拼写、例句或中文释义）
   text      String

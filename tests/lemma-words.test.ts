@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { candidateLemmas, tokenize } from "../src/lib/lemma";
+import { candidateLemmas, isHeadwordToken, tokenize } from "../src/lib/lemma";
 import { parseImportText, splitManualInput, normalizeWord, isValidWord, wordKind } from "../src/lib/words";
 import { deriveStatus, pieProgress } from "../src/lib/status";
 
@@ -20,6 +20,20 @@ describe("原形候选", () => {
     const t = tokenize("They had to abandon the car, and walk.");
     expect(t.filter((x) => x.word).map((x) => x.text)).toEqual(["They", "had", "to", "abandon", "the", "car", "and", "walk"]);
     expect(t.map((x) => x.text).join("")).toBe("They had to abandon the car, and walk.");
+  });
+  it("例句里的 token 是不是本词（详情页加粗、跑步页高亮）：本词、规则 / 不规则变形、短语各词；无关词不算", () => {
+    for (const t of ["abandon", "Abandoned", "abandoning", "abandons"]) expect(isHeadwordToken(t, "abandon")).toBe(true);
+    expect(isHeadwordToken("broke", "break")).toBe(true);
+    expect(isHeadwordToken("hypotheses", "hypothesis")).toBe(true);
+    expect(isHeadwordToken("gave", "give up")).toBe(true);
+    expect(isHeadwordToken("up", "give up")).toBe(true);
+    expect(isHeadwordToken("giving", "give up")).toBe(true);
+    expect(isHeadwordToken("went", "go")).toBe(true);
+    expect(isHeadwordToken("does", "do")).toBe(true);
+    expect(isHeadwordToken("as", "a")).toBe(false);
+    expect(isHeadwordToken("dog", "do")).toBe(false);
+    expect(isHeadwordToken("car", "abandon")).toBe(false);
+    expect(isHeadwordToken("abandonment", "abandon")).toBe(false);
   });
 });
 

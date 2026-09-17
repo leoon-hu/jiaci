@@ -37,29 +37,38 @@ export function isRunClip(bytes: Uint8Array): boolean {
 export const frameCount = (bytes: number) => Math.floor(bytes / FRAME_BYTES);
 export const silenceFrames = (seconds: number) => Math.max(0, Math.round(seconds / FRAME_SECONDS));
 
-export type RunClipKind = "word" | "definition" | "sentence";
-/** 一个词三段片段各自的字节数；没下载到 / 格式不对的段不填 */
-export type RunPlanWord = { clips: Partial<Record<RunClipKind, number>> };
-export type RunPlanOptions = { repeat: number; def: boolean; sentence: boolean; gap: number };
-export type RunPart = { type: "clip"; word: number; kind: RunClipKind } | { type: "silence"; frames: number };
+export type RunClipKind = "word" | "definition" | "sentence" | "translation";
+/** 读例句：不读 / 只读英文 / 英文 + 中文译文 */
+export type RunSentenceMode = "off" | "en" | "both";
+/** 一个词各段片段的字节数：单词、中文释义，以及最多 RUN_MAX_EXAMPLES 条例句各自的英文 / 译文；没下载到 / 格式不对的段不填 */
+export type RunPlanWord = { clips: { word?: number; definition?: number }; examples: Array<{ en?: number; zh?: number }> };
+export type RunPlanOptions = { repeat: number; def: boolean; sentence: RunSentenceMode; examples: number; gap: number };
+/** 片段：n 是例句序号（单词 / 释义为 0） */
+export type RunPart = { type: "clip"; word: number; kind: RunClipKind; n: number } | { type: "silence"; frames: number };
 /** 一个词在整段音频里的起止（秒）；end 含它后面的间隔，所以 cue 首尾相接铺满整段 */
 export type RunCue = { word: number; start: number; end: number };
 export type RunPlan = { parts: RunPart[]; cues: RunCue[]; duration: number; skipped: number[] };
 
-/** 固定的段内间隔（秒）：单词两遍之间、单词到释义、释义到例句 */
+/** 固定的段内间隔（秒）：单词两遍之间、单词到释义、到每条例句、例句英文到译文 */
 const REPEAT_GAP = 0.5;
 const DEF_GAP = 0.8;
 const SENTENCE_GAP = 0.8;
+const TRANSLATION_GAP = 0.5;
 
+/** 每个词最多带几条例句（接口按这个数下发，页面上再按设置取前几条） */
+export const RUN_MAX_EXAMPLES = 3;
 export const clampRepeat = (n: number) => Math.min(3, Math.max(1, Math.round(n) || 1));
 export const clampGap = (s: number) => Math.min(5, Math.max(1, Math.round(s) || 1));
+export const clampExamples = (n: number) => Math.min(RUN_MAX_EXAMPLES, Math.max(1, Math.round(n) || 1));
 
 /**
- * 每个词：单词 × repeat（遍间 0.5 s）→ 释义（可关）→ 例句（可关）→ 停 gap 秒 → 下一个词。
+ * 每个词：单词 × repeat（遍间 0.5 s）→ 释义（可关）→ 前 examples 条例句（每条：0.8 s → 英文 → 0.5 s → 译文；
+ * 「只读英文」不带译文，没有英文音频的例句整条跳过）→ 停 gap 秒 → 下一个词。
  * 一段都没有的词跳过（记在 skipped）。帧数用整数累加，避免浮点误差让 cue 与实际错位。
  */
 export function buildRunPlan(words: RunPlanWord[], opts: RunPlanOptions): RunPlan {
   const repeat = clampRepeat(opts.repeat);
+  const examples = clampExamples(opts.examples);
   const gapFrames = silenceFrames(clampGap(opts.gap));
   const parts: RunPart[] = [];
   const cues: RunCue[] = [];
@@ -67,15 +76,23 @@ export function buildRunPlan(words: RunPlanWord[], opts: RunPlanOptions): RunPla
   let frames = 0;
   const has = (b: number | undefined): b is number => b !== undefined && frameCount(b) > 0;
   words.forEach((w, i) => {
-    const seq: Array<RunClipKind | number> = [];
-    if (has(w.clips.word)) for (let r = 0; r < repeat; r++) { if (r) seq.push(REPEAT_GAP); seq.push("word"); }
-    if (opts.def && has(w.clips.definition)) { if (seq.length) seq.push(DEF_GAP); seq.push("definition"); }
-    if (opts.sentence && has(w.clips.sentence)) { if (seq.length) seq.push(SENTENCE_GAP); seq.push("sentence"); }
+    // 序列里的数字是静音秒数，其余是片段
+    const seq: Array<[RunClipKind, number, number] | number> = [];
+    if (has(w.clips.word)) for (let r = 0; r < repeat; r++) { if (r) seq.push(REPEAT_GAP); seq.push(["word", 0, w.clips.word]); }
+    if (opts.def && has(w.clips.definition)) { if (seq.length) seq.push(DEF_GAP); seq.push(["definition", 0, w.clips.definition]); }
+    if (opts.sentence !== "off") {
+      w.examples.slice(0, examples).forEach((e, n) => {
+        if (!has(e.en)) return;
+        if (seq.length) seq.push(SENTENCE_GAP);
+        seq.push(["sentence", n, e.en]);
+        if (opts.sentence === "both" && has(e.zh)) { seq.push(TRANSLATION_GAP); seq.push(["translation", n, e.zh]); }
+      });
+    }
     if (!seq.length) { skipped.push(i); return; }
     const start = frames;
     for (const s of seq) {
       if (typeof s === "number") { const n = silenceFrames(s); parts.push({ type: "silence", frames: n }); frames += n; }
-      else { parts.push({ type: "clip", word: i, kind: s }); frames += frameCount(w.clips[s]!); }
+      else { parts.push({ type: "clip", word: i, kind: s[0], n: s[1] }); frames += frameCount(s[2]); }
     }
     parts.push({ type: "silence", frames: gapFrames });
     frames += gapFrames;

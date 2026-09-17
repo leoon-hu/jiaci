@@ -9,9 +9,9 @@
  */
 import { useSyncExternalStore } from "react";
 import { audioUrl, setExclusivePlayer, stopSpeaking, type VoiceKey } from "./speech";
-import { buildRunPlan, cueIndexAt, frameCount, FRAME_BYTES, isRunClip, SILENCE_FRAME, type RunClipKind, type RunCue, type RunPlanOptions } from "@/lib/run-plan";
+import { buildRunPlan, clampExamples, cueIndexAt, frameCount, FRAME_BYTES, isRunClip, SILENCE_FRAME, type RunClipKind, type RunCue, type RunPlanOptions } from "@/lib/run-plan";
 
-export type RunWord = { wordId: string; spelling: string; display: string | null; kind: "review" | "new" | "done"; phonetic: { us: string; uk: string } | null; def: string | null; sentence: string | null };
+export type RunWord = { wordId: string; spelling: string; display: string | null; kind: "review" | "new" | "done"; phonetic: { us: string; uk: string } | null; def: string | null; examples: Array<{ en: string; zh: string }> };
 export type RunOptions = RunPlanOptions & { speed: number };
 export type RunStatus = "idle" | "preparing" | "ready" | "playing" | "paused" | "error";
 export type RunState = {
@@ -19,7 +19,7 @@ export type RunState = {
   words: RunWord[];
   /** 当前词在 words 里的下标；还没开始时是第一个会播的词 */
   index: number;
-  /** 下载进度（去重后的片段数） */
+  /** 下载进度（去重后的片段数）；播放中改设置需要补下载片段时也走这里（done < total 就是在补） */
   progress: { done: number; total: number };
   /** 一段音频都没有、被跳过的词数 */
   skipped: number;
@@ -39,28 +39,48 @@ export function useRunPlayer(): RunState { return useSyncExternalStore(subscribe
 let audio: HTMLAudioElement | null = null;
 let blobUrl = "";
 let cues: RunCue[] = [];
-/** 每个词三段片段的 URL（没有释义 / 例句的不填） */
-let clipUrls: Array<Partial<Record<RunClipKind, string>>> = [];
-/** 已下载且格式合格的片段，保留到 stop()，改设置只重新拼接 */
+/** 每个词各段片段的 URL：单词、释义、每条例句的英文与译文（没有的不填） */
+type ClipUrls = { word?: string; definition?: string; examples: Array<{ en?: string; zh?: string }> };
+let clipUrls: ClipUrls[] = [];
+/** 已下载且格式合格的片段，保留到 stop()；改设置只重新拼接，要用到还没下载的段（多开一条例句、加上译文）才补下载 */
 let clips = new Map<string, ArrayBuffer>();
-let options: RunOptions = { repeat: 2, def: true, sentence: true, gap: 2, speed: 1 };
+/** 试过拿不到的片段（没有音频、格式不对），改设置时不再反复去要 */
+let unavailable = new Set<string>();
+let options: RunOptions = { repeat: 2, def: true, sentence: "both", examples: 2, gap: 2, speed: 1 };
+/** 补下载的序号：改设置连点几下，只有最后一次的结果拿来重拼 */
+let topUpSeq = 0;
 /** 正在换 src（准备 / 改设置重拼）：期间的 pause 事件不当成播放状态变化；metadata 到了就清掉 */
 let rebuilding = false;
 let prepareSeq = 0;
 let aborter: AbortController | null = null;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** 同时下载几段：现成的文件几毫秒一段，要现合成的由服务端的合成并发（tts.concurrency）排队，开多几路让合成那边一直有活干 */
+const DOWNLOAD_CONCURRENCY = 6;
 
-/** 下载一段：429 是按需合成限速（每分钟 60 次），等 5 秒再要、最多一分钟；404 / 507 是没有音频且合成不了，跳过 */
+/** 被限速时最多等多久（毫秒）：一轮要现合成几百段时，按 Retry-After 排队等，等够这么久还没轮到才放弃 */
+const RATE_LIMIT_WAIT_MS = 10 * 60_000;
+
+/**
+ * 下载一段：429 是按需合成限速，按响应的 Retry-After 等（没有就 5 秒）再要，累计等满 RATE_LIMIT_WAIT_MS 才放弃；
+ * 404 / 507 是没有音频且合成不了，跳过；网络错误与其它状态最多试 4 次
+ */
 async function fetchClip(url: string, signal: AbortSignal): Promise<ArrayBuffer | null> {
-  for (let attempt = 1; attempt <= 12; attempt++) {
+  let waited = 0;
+  for (let attempt = 1; attempt <= 4; ) {
     let r: Response;
     try { r = await fetch(url, { credentials: "same-origin", signal }); }
-    catch { if (signal.aborted || attempt >= 4) return null; await sleep(3000); continue; }
+    catch { if (signal.aborted || ++attempt > 4) return null; await sleep(3000); continue; }
     if (r.ok) return r.arrayBuffer();
     if (r.status === 404 || r.status === 507) return null;
-    if (r.status === 429) { await sleep(5000); continue; }
-    if (attempt >= 4) return null;
+    if (r.status === 429) {
+      const ms = Math.min(60_000, Math.max(1000, (Number(r.headers.get("retry-after")) || 5) * 1000));
+      if (waited >= RATE_LIMIT_WAIT_MS) return null;
+      waited += ms;
+      await sleep(ms);
+      continue;
+    }
+    if (++attempt > 4) return null;
     await sleep(3000);
   }
   return null;
@@ -135,6 +155,37 @@ function clearMediaSession() {
 }
 
 const sizeOf = (u: string | undefined) => (u ? clips.get(u)?.byteLength : undefined);
+/** 片段 URL → 一个词各段的字节数（拼接计划只看有没有、多大） */
+const sizesOf = (u: ClipUrls) => ({ clips: { word: sizeOf(u.word), definition: sizeOf(u.definition) }, examples: u.examples.map((e) => ({ en: sizeOf(e.en), zh: sizeOf(e.zh) })) });
+/** 拼接计划里某一段对应的 URL */
+const urlOf = (u: ClipUrls, kind: RunClipKind, n: number) => kind === "word" ? u.word : kind === "definition" ? u.definition : kind === "sentence" ? u.examples[n]?.en : u.examples[n]?.zh;
+
+/** 按设置算出这一批词要用到哪些片段（去重）：单词总要，释义看 def，例句取前 examples 条、译文只在 both 时要 */
+function neededUrls(opts: RunOptions): string[] {
+  const out = new Set<string>();
+  for (const u of clipUrls) {
+    if (u.word) out.add(u.word);
+    if (opts.def && u.definition) out.add(u.definition);
+    if (opts.sentence !== "off") for (const e of u.examples.slice(0, clampExamples(opts.examples))) {
+      if (e.en) out.add(e.en);
+      if (opts.sentence === "both" && e.zh) out.add(e.zh);
+    }
+  }
+  return Array.from(out);
+}
+
+/** 下载一批片段进 clips（拿不到的记进 unavailable），进度写到 state.progress；被作废（seq 变了）就中途返回 false */
+async function download(urls: string[], signal: AbortSignal, isCurrent: () => boolean): Promise<boolean> {
+  set({ progress: { done: 0, total: urls.length } });
+  let done = 0;
+  await pool(urls, DOWNLOAD_CONCURRENCY, async (u) => {
+    const b = await fetchClip(u, signal);
+    if (!isCurrent()) return;
+    if (b && isRunClip(new Uint8Array(b))) clips.set(u, b); else unavailable.add(u);
+    set({ progress: { done: ++done, total: urls.length } });
+  });
+  return isCurrent();
+}
 
 /**
  * 按当前设置把片段拼成一整段，从 atWord 这个词开始；resume 时 metadata 就绪就接着播。
@@ -142,11 +193,11 @@ const sizeOf = (u: string | undefined) => (u ? clips.get(u)?.byteLength : undefi
  * 初次拼接从 0 开始不需要 seek，重拼时的 seek 与续播放在 loadedmetadata 里做。
  */
 function build(atWord: number, resume: boolean) {
-  const plan = buildRunPlan(clipUrls.map((u) => ({ clips: { word: sizeOf(u.word), definition: sizeOf(u.definition), sentence: sizeOf(u.sentence) } })), options);
+  const plan = buildRunPlan(clipUrls.map(sizesOf), options);
   cues = plan.cues;
   const parts: ArrayBuffer[] = plan.parts.map((p) => {
     if (p.type === "silence") return silence(p.frames);
-    const b = clips.get(clipUrls[p.word][p.kind]!)!;
+    const b = clips.get(urlOf(clipUrls[p.word], p.kind, p.n)!)!;
     // 只拼整帧（现有文件都是整帧，防万一）
     return b.slice(0, frameCount(b.byteLength) * FRAME_BYTES);
   });
@@ -180,22 +231,19 @@ export async function prepare(words: RunWord[], opts: RunOptions, key: VoiceKey)
   const { signal } = aborter;
   options = opts;
   set({ status: "preparing", words, index: -1, progress: { done: 0, total: 0 }, skipped: 0, duration: 0, error: "" });
+  // 例句译文是中文，与释义走同一种音频（中文音色）
   clipUrls = await Promise.all(words.map(async (w) => ({
     word: (await audioUrl("word", w.spelling, key)) ?? undefined,
     definition: w.def ? (await audioUrl("definition", w.def, key)) ?? undefined : undefined,
-    sentence: w.sentence ? (await audioUrl("sentence", w.sentence, key)) ?? undefined : undefined,
+    examples: await Promise.all(w.examples.map(async (e) => ({
+      en: (await audioUrl("sentence", e.en, key)) ?? undefined,
+      zh: (await audioUrl("definition", e.zh, key)) ?? undefined,
+    }))),
   })));
   if (my !== prepareSeq) return;
-  const urls = Array.from(new Set(clipUrls.flatMap((u) => Object.values(u).filter((x): x is string => !!x))));
-  set({ progress: { done: 0, total: urls.length } });
-  let done = 0;
-  await pool(urls, 3, async (u) => {
-    const b = await fetchClip(u, signal);
-    if (my !== prepareSeq) return;
-    if (b && isRunClip(new Uint8Array(b))) clips.set(u, b);
-    set({ progress: { done: ++done, total: urls.length } });
-  });
-  if (my !== prepareSeq) return;
+  // 只下载当前设置用得到的段：三条例句带译文全下载的话 150 词要 20 MB 上下，改设置再补
+  const urls = neededUrls(options);
+  if (!(await download(urls, signal, () => my === prepareSeq))) return;
   if (!clips.size) {
     set({ status: "error", error: urls.length ? "没有拿到可用的音频：网络不通，或当前的音频格式不支持跑步模式" : "这些词还没有可朗读的音频" });
     return;
@@ -231,14 +279,23 @@ export function prev() { if (audio && cues.length) seekToCue(cueIndexAt(cues, au
 /** 跳到某个词（词表里点一行）；被跳过的词没有 cue，不动 */
 export function jumpTo(word: number) { const ci = cues.findIndex((c) => c.word === word); if (ci >= 0) seekToCue(ci); }
 
-/** 改设置：语速直接改；其余重新拼接（不重新下载），当前词接着播 */
+/**
+ * 改设置：语速直接改；其余重新拼接，当前词接着播。已有的片段不重新下载；
+ * 用到还没下载的段（多开一条例句、加上译文）先补下载，期间照常播旧的一段，补完再重拼
+ */
 export function applyOptions(patch: Partial<RunOptions>) {
   const before = options;
   options = { ...options, ...patch };
   if (!audio || !clips.size || state.status === "preparing" || state.status === "idle") return;
   if (patch.speed !== undefined) audio.playbackRate = options.speed;
-  const structural = (["repeat", "def", "sentence", "gap"] as const).some((k) => patch[k] !== undefined && patch[k] !== before[k]);
-  if (structural) build(Math.max(0, state.index), state.status === "playing");
+  const structural = (["repeat", "def", "sentence", "examples", "gap"] as const).some((k) => patch[k] !== undefined && patch[k] !== before[k]);
+  if (!structural) return;
+  const missing = neededUrls(options).filter((u) => !clips.has(u) && !unavailable.has(u));
+  const rebuild = () => build(Math.max(0, state.index), state.status === "playing");
+  if (!missing.length) { rebuild(); return; }
+  const my = ++topUpSeq, mine = prepareSeq;
+  const signal = aborter?.signal ?? new AbortController().signal;
+  download(missing, signal, () => my === topUpSeq && mine === prepareSeq).then((ok) => { if (ok) rebuild(); });
 }
 
 /** 放掉正在进行的准备、音频源与片段；不发状态（prepare 里紧接着就进 preparing，不要闪一下空闲态） */
@@ -246,9 +303,11 @@ function reset() {
   aborter?.abort();
   aborter = null;
   prepareSeq++;
+  topUpSeq++;
   cues = [];
   clipUrls = [];
   clips = new Map();
+  unavailable = new Set();
   state = { ...INITIAL };
   if (audio) {
     audio.pause();

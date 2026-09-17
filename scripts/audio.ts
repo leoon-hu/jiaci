@@ -3,7 +3,8 @@
  *   npm run audio:generate -- --missing                        # 有 AI 资料的词：单词四种声音 + 例句默认声音（tts.batch_voices）+ 中文释义（tts.voice_zh）
  *   npm run audio:generate -- --missing --wordbook 雅思词汇     # 某内置词库的全部词（没有 AI 资料的只生成单词音频）
  *   npm run audio:generate -- --words abandon,"give up"        # 指定词
- *   选项：--voices us_female,uk_male（例句也生成这些声音） --words-only 只生成单词 --limit N --concurrency 3 --dry-run 只统计不合成
+ *   选项：--voices us_female,uk_male（例句也生成这些声音） --translations 例句的中文译文也生成（跑步模式「英文 + 中文」用；量大，默认只登记不生成）
+ *         --register-only 只把文本登记到 audio_text 不合成（登记过的才允许按需合成） --words-only 只生成单词 --limit N --concurrency 3 --dry-run 只统计不合成
  *   npm run audio:stats                                         # 登记数、各音色生成数、失败数、磁盘占用
  *   npm run audio:prune -- --voice en-US-AriaNeural             # 删掉某音色的全部文件与记录（换音色后清理）
  *   npm run audio:prune -- --orphans                            # 删掉已不在用的例句与释义及其文件（ai:fill --regenerate 之后清理）
@@ -35,7 +36,7 @@ async function generate() {
   const limit = Number(arg("limit", "0")) || 0;
   const concurrency = Math.max(1, Number(arg("concurrency", String(cfg.concurrency))) || cfg.concurrency);
   const only = arg("voices") ? arg("voices").split(",").map((s) => s.trim()).filter(isVoiceKey) : undefined;
-  const wordsOnly = has("words-only"), dry = has("dry-run");
+  const wordsOnly = has("words-only"), dry = has("dry-run"), translations = has("translations"), registerOnly = has("register-only");
   let words: Array<{ spelling: string; translation: string | null; aiOpenai: { examples: unknown; core: string | null } | null; aiDeepseek: { examples: unknown; core: string | null } | null }>;
   if (arg("words")) {
     const list = arg("words").split(",").map((s) => normalizeWord(s)).filter(Boolean);
@@ -65,12 +66,13 @@ async function generate() {
   const targets: AudioTarget[] = [];
   for (const w of words) for (const t of targetsOfWord(w.spelling, [w.aiOpenai, w.aiDeepseek], w)) { const k = `${t.kind}:${t.text}`; if (!seen.has(k)) { seen.add(k); targets.push(t); } }
   await registerTexts(prisma, targets);
-  let jobs = jobsOf(cfg, targets, only);
+  let jobs = jobsOf(cfg, targets, only, translations);
   if (wordsOnly) jobs = jobs.filter((j) => j.kind === "word");
   const sentences = targets.filter((t) => t.kind === "sentence").length;
-  const defs = targets.filter((t) => t.kind === "definition").length;
-  console.log(`引擎 ${cfg.provider}，词 ${words.length}，文本 ${targets.length}（例句 ${sentences}，释义 ${defs}），音频 ${jobs.length} 段（已有文件会跳过），并发 ${concurrency}，目录 ${audioDir()}${dry ? "；试运行，不合成" : ""}`);
-  if (dry || !jobs.length) return;
+  const trans = targets.filter((t) => t.translation).length;
+  const defs = targets.filter((t) => t.kind === "definition").length - trans;
+  console.log(`引擎 ${cfg.provider}，词 ${words.length}，文本 ${targets.length}（例句 ${sentences}，译文 ${trans}${translations ? "" : "（只登记）"}，释义 ${defs}），音频 ${jobs.length} 段（已有文件会跳过），并发 ${concurrency}，目录 ${audioDir()}${dry ? "；试运行，不合成" : registerOnly ? "；只登记，不合成" : ""}`);
+  if (dry || registerOnly || !jobs.length) return;
   const t0 = Date.now();
   let n = 0;
   const st = await generateClips(cfg, jobs, prisma, concurrency, (j, r) => {

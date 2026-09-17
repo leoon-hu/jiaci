@@ -151,9 +151,25 @@ const dragOutside = async (i) => {
   await mouse("mouseReleased", row.x + row.w / 2, y + 130); await sleep(500);
   return { picked, chip };
 };
+/** 从行中间按下、拖开再拖回按下点旁边：卡片压着哪个按钮就该亮哪个（按下点附近不是死区） */
+const dragBack = async (i) => {
+  const row = await rowRect(i);
+  const x0 = row.x + row.w / 2, y = row.y + row.h / 2;
+  await mouse("mousePressed", x0, y); await sleep(50);
+  for (let x = x0 + 10; x <= x0 + 70; x += 10) { await mouse("mouseMoved", x, y); await sleep(30); }
+  await mouse("mouseMoved", x0 + 10, y); await sleep(150);
+  const picked = await evalJs("document.querySelector('.s-opt.active')?.textContent");
+  const under = await evalJs(`[...document.querySelectorAll('.srow.dragging .s-opt')].find(e=>{const r=e.getBoundingClientRect();return ${x0 + 10}>=r.left&&${x0 + 10}<r.right})?.textContent`);
+  await mouse("mouseMoved", x0, y + 130); await sleep(50);
+  await mouse("mouseReleased", x0, y + 130); await sleep(500);
+  return { picked, under };
+};
 const pieAt = (i) => evalJs(`document.querySelectorAll('.s-content .pie')[${i}]?.className`);
 if (row) {
   const wordAt2 = await evalJs("document.querySelectorAll('.s-content .word')[2]?.textContent");
+  // 拖开再拖回按下点旁边：按下点附近不是死区，压着哪个按钮亮哪个
+  const back = await dragBack(2);
+  log.push(`列表：把第 3 行拖开再拖回按下点旁 → 高亮「${back.picked}」= 压着的「${back.under}」 ${back.picked && back.picked === back.under ? "✓" : "✗"}`);
   // 拖出行外松手：不该有任何操作
   const outside = await dragOutside(2);
   const stOut = await pieAt(2);
@@ -378,22 +394,41 @@ log.push(`详情：短语 give up → 标题「${await evalJs("document.querySel
   await mouse("mousePressed", start.x + start.w / 2, start.y + start.h / 2); await mouse("mouseReleased", start.x + start.w / 2, start.y + start.h / 2);
   const playing = await waitFor("document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 8000);
   const w0 = await evalJs("document.querySelector('.run-word')?.textContent");
+  // 首屏：例句（默认两条，中英对照、本词高亮）与四个并排大按钮（上一个 / 暂停 / 停止 / 下一个），整块撑满一屏
+  const exN = await evalJs("document.querySelectorAll('.run-example').length");
+  const exZh = await evalJs("!![...document.querySelectorAll('.run-example .zh')].every(e=>e.textContent.trim())");
+  const exHw = await evalJs("[...document.querySelectorAll('.run-example mark.hw')].map(m=>m.textContent.toLowerCase()).join(',')");
+  const ctls = await evalJs("[...document.querySelectorAll('.run-controls .run-ctl')].map(b=>b.getAttribute('aria-label')).join('/')");
+  const heroH = await evalJs("Math.round(document.querySelector('.run-hero.now').getBoundingClientRect().height)");
+  const ctlH = await evalJs("Math.round(document.querySelector('.run-ctl').getBoundingClientRect().height)");
+  await shot("e2e-run-now");
+  log.push(`跑步：首屏例句 ${exN} 条 ${exN === 2 ? "✓" : "✗"}，都有中文 ${exZh ? "✓" : "✗"}，本词高亮「${exHw}」 ${exHw && exHw.split(",").every((t) => t.startsWith((w0 ?? "").toLowerCase().slice(0, 4))) ? "✓" : "✗"}；按钮 ${ctls} ${ctls === "上一个/暂停/停止/下一个" ? "✓" : "✗"}，高 ${ctlH}px ${ctlH >= 72 ? "✓" : "✗"}；正文块高 ${heroH}px ${heroH >= 844 - 56 - 2 ? "✓" : "✗"}`);
   await evalJs("document.querySelector('.run-controls [aria-label=\"下一个\"]')?.click()"); await sleep(400);
   const w1 = await evalJs("document.querySelector('.run-word')?.textContent");
   // 一个词（两遍 + 释义 + 例句 + 2 秒间隔）十几秒，等它自己走到下一个
   const advanced = await waitFor(`document.querySelector('.run-word')?.textContent !== ${JSON.stringify(w1)}`, 30000, 500);
   const w2 = await evalJs("document.querySelector('.run-word')?.textContent");
   log.push(`跑步：开始播放 ${playing ? "✓" : "✗"}；下一个 ${w0} → ${w1} ${w1 && w1 !== w0 ? "✓" : "✗"}；播完自动推进 → ${w2} ${advanced ? "✓" : "✗"}`);
-  await evalJs("[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('读例句'))?.querySelector('input').click()"); await sleep(1500);
+  // 例句 2 → 3 条：第三条的音频还没下载，播放不停、后台补下载再重拼
+  await evalJs("[...[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('几条例句')).querySelectorAll('.seg button')].find(b=>b.textContent==='3')?.click()");
+  const topped = await waitFor("document.querySelectorAll('.run-example').length === 3 && document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 20000, 300);
+  await sleep(6000);
+  const stillAfterTop = await evalJs("!!document.querySelector('.run-toggle[aria-label=\"暂停\"]') && !document.querySelector('.run-hint')?.textContent.includes('补充')");
+  log.push(`跑步：例句改成 3 条 → 显示 3 条且仍在播 ${topped ? "✓" : "✗"}，补下载结束后仍在播 ${stillAfterTop ? "✓" : "✗"}`);
+  await evalJs("[...[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('读例句')).querySelectorAll('.seg button')].find(b=>b.textContent==='不读')?.click()"); await sleep(1500);
   const stillPlaying = await waitFor("document.querySelector('.run-toggle[aria-label=\"暂停\"]')", 3000);
+  const exGone = await evalJs("document.querySelectorAll('.run-example').length");
   const saved = await evalJs("fetch('/api/settings').then(r=>r.json()).then(s=>s.runSentence)");
   await shot("e2e-run");
   await evalJs("document.querySelector('.run-top a').click()"); await sleep(2500);
   const pill = await evalJs("document.querySelector('.run-pill .text b')?.textContent");
+  // 小条上的「停止」先弹确认框，再点框里的「停止」才真停
   await evalJs("document.querySelector('.run-pill [aria-label=\"停止跑步模式\"]')?.click()"); await sleep(400);
+  const asked = await waitFor("[...document.querySelectorAll('.modal h3')].some(h=>h.textContent.includes('停止跑步模式'))", 2000);
+  await evalJs("[...document.querySelectorAll('.modal .btn-danger')].find(b=>b.textContent==='停止')?.click()"); await sleep(400);
   const gone = await waitFor("!document.querySelector('.run-pill')", 3000);
-  log.push(`跑步：关掉例句后仍在播 ${stillPlaying ? "✓" : "✗"}，设置随账号保存 ${saved === false ? "✓" : "✗"}；回首页有小条「${pill}」 ${pill ? "✓" : "✗"}，小条上停止 ${gone ? "✓" : "✗"}`);
-  await evalJs("fetch('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({runSentence:true})})");
+  log.push(`跑步：关掉例句后仍在播 ${stillPlaying ? "✓" : "✗"}、例句不再显示 ${exGone === 0 ? "✓" : "✗"}，设置随账号保存 ${saved === "off" ? "✓" : "✗"}；回首页有小条「${pill}」 ${pill ? "✓" : "✗"}，小条上停止先确认 ${asked ? "✓" : "✗"}、确认后消失 ${gone ? "✓" : "✗"}`);
+  await evalJs("fetch('/api/settings',{method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify({runSentence:'both',runExamples:2})})");
 }
 // 清理测试词库
 if (fixture.id) await evalJs(`fetch('/api/wordbooks/${fixture.id}',{method:'DELETE'}).then(r=>r.status)`);

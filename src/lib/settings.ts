@@ -19,10 +19,14 @@ export const SettingsSchema = z.object({
   listMode: z.enum(["both", "en", "zh"]),
   /** 词条资料来源：auto 按厂商顺序取第一家有资料的；指定厂商没有资料时用词典兜底 */
   aiProvider: z.enum(["auto", "openai", "deepseek"]),
-  /** 跑步模式（需求 3.2.6）：每个单词读几遍、读不读释义 / 例句、词间间隔（秒）、语速；在跑步页改，设置页不显示 */
+  /** 跑步模式（需求 3.2.6）：每轮取多少个词、每个单词读几遍、读不读释义、例句条数与读法、词间间隔（秒）、语速；在跑步页改，设置页不显示 */
+  runWords: z.union([z.literal(30), z.literal(50), z.literal(100), z.literal(150)]),
   runRepeat: z.number().int().min(1).max(3),
   runDef: z.boolean(),
-  runSentence: z.boolean(),
+  /** 读例句：不读 / 只读英文 / 英文 + 中文译文。2026-09-17 之前是布尔值（开 = 读英文），旧值按 true → both、false → off 认 */
+  runSentence: z.preprocess((v) => (v === true ? "both" : v === false ? "off" : v), z.enum(["off", "en", "both"])),
+  /** 显示与朗读几条例句 */
+  runExamples: z.number().int().min(1).max(3),
   runGap: z.number().int().min(1).max(5),
   runSpeed: z.number().min(0.8).max(1.2),
 });
@@ -34,7 +38,7 @@ export async function defaultSettings(): Promise<UserSettings> {
     reviewLimit: await getConfigInt("study.default_review_limit"),
     order: "review-first", newOrder: "book", accent: "us", voice: "female", exSpeaker: "right",
     autoPlay: true, autoReadDetail: true, theme: "system", listMode: "both", aiProvider: "auto",
-    runRepeat: 2, runDef: true, runSentence: true, runGap: 2, runSpeed: 1,
+    runWords: 50, runRepeat: 2, runDef: true, runSentence: "both", runExamples: 2, runGap: 2, runSpeed: 1,
   };
 }
 

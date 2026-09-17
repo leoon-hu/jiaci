@@ -35,16 +35,21 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   "tts.word_rate": "-10%",
   "tts.sentence_rate": "+0%",
   "tts.def_rate": "+0%",
-  "tts.concurrency": "3",
+  // Edge 同时开几路合成：6 路实测 150 词 × 3 条例句的译文（372 段）40 秒备好，3 路要 79 秒；再多怕被 Edge 限流
+  "tts.concurrency": "6",
   "tts.kokoro_voice_us_female": "af_heart",
   "tts.kokoro_voice_us_male": "am_michael",
   "tts.kokoro_voice_uk_female": "bf_emma",
   "tts.kokoro_voice_uk_male": "bm_george",
   "tts.kokoro_voice_zh": "zf_xiaobei",
   "tts.batch_voices": "us_female",
-  // 按需合成的两道闸门：磁盘至少留多少 MB 才继续合成、每个用户每天最多合成多少段（审计 NO01）
+  // 按需合成的三道闸门：磁盘至少留多少 MB 才继续合成、每个用户每分钟 / 每天最多合成多少段（审计 NO01）。
+  // 跑步模式准备一轮要现合成的例句译文可达几百段（150 词 × 3 条 = 450，换成非批量音色的例句再翻倍），
+  // 2026-09-17 之前每分钟 60 / 每天 500 的上限会让准备卡一分钟、后半段直接被跳过。每分钟上限只防失控的客户端，
+  // 一次准备要多少段都不该被它卡住，真正的吞吐由合成并发（tts.concurrency）决定
   "tts.min_free_mb": "2048",
-  "tts.daily_synth_per_user": "500",
+  "tts.synth_per_minute": "1000",
+  "tts.daily_synth_per_user": "5000",
   // 条款版本：正文有实质修改时 +1，用户的 terms_version 与它不一致会在应用内提示重新确认（审计 F171）
   "legal.version": "1",
   "legal.privacy_policy": "",

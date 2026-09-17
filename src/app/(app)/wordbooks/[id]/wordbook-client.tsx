@@ -55,7 +55,11 @@ const UNDO_MS = 5000;
 const TOP_BTN_AT = 300;
 /** 长按进入多选 */
 const LONG_PRESS_MS = 500;
-/** 横向拖过这么多像素才算「拖到了按钮上」：按下的地方本来就压着某个按钮，轻轻一碰不该算数 */
+/**
+ * 横向拖过这么多像素才算「拖到了按钮上」：按下的地方本来就压着某个按钮，轻轻一碰不该算数。
+ * 只要拖够过一次就一直算数：拖开再拖回按下点附近，卡片压着哪个按钮就是哪个——
+ * 不然按下点左右各 20px 是死区，压在那儿的按钮有一段怎么都点不亮、松手也不执行
+ */
 const DRAG_MIN = 20;
 /** 松手后卡片飞向按钮（或飞回原位）的时长，与 wordbook.css 里的过渡一致 */
 const DROP_MS = 180;
@@ -548,11 +552,12 @@ const NO_DEF = "暂无释义";
 
 /** 单词行：进度饼图 + 小喇叭 + 拖拽操作（拖到行内按钮上松手，拖到别处松手就是取消）；长按进入多选，多选时点击行勾选 */
 function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen, onAct, onProgress, onBookmark, onLongPress, onToggle }: { row: ListRow; mode: ListMode; vk: VoiceKey; selectMode: boolean; checked: boolean; bookmarked: boolean; flash: boolean; onOpen: () => void; onAct: (a: ListAct) => void; onProgress: () => void; onBookmark: () => void; onLongPress: () => void; onToggle: () => void }) {
-  const rowRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
+  /** 行内的操作按钮条（一直有布局，不拖时只是看不见）：拖拽判定按每个按钮的真实位置量 */
+  const optsRef = useRef<HTMLDivElement>(null);
   /** 行尾区域（释义右侧的空白 + 到期日 + 箭头）：遮罩模式下点这里进详情、点其余位置揭开遮罩 */
   const tailRef = useRef<HTMLDivElement>(null);
-  const dg = useRef<{ x: number; y: number; pick: number | null; axis: "x" | "y" | null; id: number } | null>(null);
+  const dg = useRef<{ x: number; y: number; pick: number | null; axis: "x" | "y" | null; armed: boolean; id: number } | null>(null);
   const lp = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fired = useRef(false);
   /** 跟手小卡片的中心（视口坐标）；null = 没在拖。卡片挂在 body 上，可以拖到页面任何地方 */
@@ -597,10 +602,19 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
   };
 
   const clearLp = () => { if (lp.current) { clearTimeout(lp.current); lp.current = null; } };
+  /** 卡片压着哪个按钮：按每个按钮的真实位置判断（不按「行宽 / 个数」平均算，字多的按钮在窄屏上可能被撑宽）；不在按钮条里返回 null */
+  const optAt = (x: number, y: number): number | null => {
+    const el = optsRef.current; if (!el) return null;
+    const r = el.getBoundingClientRect();
+    if (x < r.left || x > r.right || y < r.top || y > r.bottom) return null;
+    const kids = Array.from(el.children);
+    const i = kids.findIndex((k) => x < k.getBoundingClientRect().right);
+    return i < 0 ? kids.length - 1 : i;
+  };
 
   function down(e: React.PointerEvent<HTMLDivElement>) {
     if (e.button !== undefined && e.button !== 0) return;
-    dg.current = { x: e.clientX, y: e.clientY, pick: null, axis: null, id: e.pointerId }; fired.current = false;
+    dg.current = { x: e.clientX, y: e.clientY, pick: null, axis: null, armed: false, id: e.pointerId }; fired.current = false;
     if (selectMode) return;
     lp.current = setTimeout(() => {
       lp.current = null; fired.current = true;
@@ -622,13 +636,10 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
       setDropping(false);
     }
     if (s.axis !== "x") return;
-    const r = rowRef.current?.getBoundingClientRect();
+    // 拖够 DRAG_MIN 一次之后才认按钮，认了就不再收回（见 DRAG_MIN 的说明）
+    if (Math.abs(d) >= DRAG_MIN) s.armed = true;
     // 按钮只在这一行里：手指出了这一行（拖到别的行、页面别处）就按「取消」算，松手什么都不做
-    const inRow = !!r && e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
-    // 拖动距离不够就先不认按钮：按下的地方本来就压着某个按钮，轻轻一碰不该算数
-    s.pick = Math.abs(d) < DRAG_MIN ? null
-      : inRow ? Math.max(0, Math.min(OPTS.length - 1, Math.floor(((e.clientX - r.left) / r.width) * OPTS.length)))
-      : 0;
+    s.pick = s.armed ? optAt(e.clientX, e.clientY) ?? 0 : null;
     setPt({ x: e.clientX, y: e.clientY }); setPick(s.pick);
   }
   /** 松手（cancelled = 被浏览器打断，一律当取消处理） */
@@ -647,17 +658,17 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
       setTimeout(() => { setPt(null); setDropping(false); }, DROP_MS);
       return;
     }
-    // 落在按钮上：卡片吸到那个按钮上淡出，动画结束再执行（「书签」不改状态）
-    const r = rowRef.current?.getBoundingClientRect();
-    if (r) setPt({ x: r.left + (r.width / OPTS.length) * (k + 0.5), y: r.top + r.height / 2 });
+    // 落在按钮上：卡片吸到那个按钮的中心淡出，动画结束再执行（「书签」不改状态）
+    const b = optsRef.current?.children[k]?.getBoundingClientRect();
+    if (b) setPt({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
     setTimeout(() => {
       setPt(null); setPick(null); setDropping(false);
       if (opt.o === "bookmark") onBookmark(); else if (opt.o === "know") onProgress(); else onAct(opt.o as ListAct);
     }, DROP_MS);
   }
   return (
-    <div className={"srow" + (pt ? " dragging" : "") + (selectMode ? " selecting" : "") + (masked ? " masked" : "") + (checked ? " checked" : "") + (revealed ? " revealed" : "") + (bookmarked ? " bookmarked" : "") + (flash ? " bm-flash" : "")} ref={rowRef} data-sp={row.spelling} data-id={row.id}>
-      <div className="s-opts" aria-hidden>{OPTS.map((o, i) => <div key={o.o} className={`s-opt ${o.cls}${pick === i ? " active" : ""}`}>{o.label}{o.sub && <small>{o.sub}</small>}</div>)}</div>
+    <div className={"srow" + (pt ? " dragging" : "") + (selectMode ? " selecting" : "") + (masked ? " masked" : "") + (checked ? " checked" : "") + (revealed ? " revealed" : "") + (bookmarked ? " bookmarked" : "") + (flash ? " bm-flash" : "")} data-sp={row.spelling} data-id={row.id}>
+      <div className="s-opts" ref={optsRef} aria-hidden>{OPTS.map((o, i) => <div key={o.o} className={`s-opt ${o.cls}${pick === i ? " active" : ""}`}>{o.label}{o.sub && <small>{o.sub}</small>}</div>)}</div>
       {/* 卡片挂到 body 上：留在行里会被列表的 overflow 裁掉，拖不出这一行 */}
       {pt && createPortal(
         <div className={"s-chip" + (armed ? ` on ${armed.cls}` : "") + (dropping ? " dropping" : "")}
