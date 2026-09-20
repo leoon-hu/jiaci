@@ -247,6 +247,8 @@ textarea.input{min-height:90px;resize:vertical;line-height:1.5}
 .row:first-child{border-top:0}
 .row.link{cursor:pointer}
 .row.link:hover{background:var(--bg)}
+/* 设置里点了弹窗的一行（联系站长）是 button，长得和 Link 的一行一样 */
+button.row{width:100%;border:0;border-top:1px solid var(--border);background:none;text-align:left;font:inherit}
 .row .main{flex:1;min-width:0}
 .row .title{font-weight:600}
 .row .sub{font-size:13px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -319,6 +321,11 @@ textarea.input{min-height:90px;resize:vertical;line-height:1.5}
 .modal p{color:var(--muted);font-size:14px}
 .modal .actions{display:flex;gap:10px;margin-top:18px}
 .modal .actions .btn{flex:1}
+/* 「联系站长」弹窗里的微信二维码：居中一张，手机上长按识别 */
+.contact-qr{display:flex;justify-content:center;margin-top:12px}
+.contact-qr img{width:220px;height:auto;border-radius:12px;background:#fff}
+/* 「分享给朋友」弹窗里的那段话：可以选中复制 */
+.share-message{margin:12px 0 0;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg);font:inherit;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-all;user-select:text}
 @keyframes pop{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
 @media (max-width:767px){
   .modal-backdrop{align-items:flex-end;padding:0}

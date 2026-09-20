@@ -3,9 +3,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import Logo from "@/components/Logo";
 import SiteFooter from "@/components/public/SiteFooter";
+import { REPO_URL as REPO } from "@/lib/sites";
 import "./landing.css";
-
-const REPO = "https://github.com/leoon-hu/jiaci";
 
 /** 落地页的三张截图（public/shots/，由 `npm run readme:shots` 生成，README 也用同一批） */
 const SHOTS = [
@@ -50,7 +49,7 @@ export default async function Index() {
             <a className="btn btn-secondary btn-lg" href={REPO} target="_blank" rel="noopener">查看源码</a>
           </div>
           <p className="land-open">
-            <strong>代码与数据结构全部开源（MIT）</strong>：应用源码、数据库表结构、词条字段定义、内置词库词表与离线脚本都在 <a href={REPO} target="_blank" rel="noopener">GitHub</a> 上，可以自行部署一套。
+            <strong>代码与数据结构全部开源（MIT）</strong>：应用源码、数据库表结构、词条字段定义、内置词库词表与离线脚本都在 <a href={REPO} target="_blank" rel="noopener">GitHub</a> 上，谁都能查、可以自行部署一套。免费、无广告、不卖数据，学习记录随时导出、账号随时注销。
           </p>
           <p className="small muted">无需密码，邮箱验证码登录，首次登录自动注册。所有词条与内置词库<Link href="/dict">公开可查</Link>，不用登录</p>
         </section>

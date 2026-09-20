@@ -10,7 +10,9 @@ import { api } from "@/lib/client/api";
 import { resetMeCache, useMe } from "@/lib/client/useMe";
 import { useInstall } from "@/lib/client/install";
 import type { UserSettings } from "@/lib/settings";
-import { SISTER_SITES } from "@/lib/sites";
+import { AUTHOR_CONTACT, OPEN_CLAIM, REPO_URL, SISTER_SITES } from "@/lib/sites";
+import { ContactModal } from "@/components/ContactLink";
+import ShareButton from "@/components/ShareButton";
 import "./settings.css";
 
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: Array<[T, string]>; onChange: (v: T) => void }) {
@@ -31,6 +33,7 @@ export default function SettingsPage() {
   const [delOpen, setDelOpen] = useState(false);
   const [confirmEmail, setConfirmEmail] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
+  const [contactOpen, setContactOpen] = useState(false);
   // 安装为应用（需求 4.1）：首页横幅关掉了也能从这里装；已安装或浏览器不支持时不显示这一行
   const inst = useInstall();
   useEffect(() => { setS(settings); }, [settings]);
@@ -98,6 +101,10 @@ export default function SettingsPage() {
               <div className="row setting"><div className="main"><div className="title">版本</div></div><div className="ctl muted small">v0.1.0</div></div>
               <Link className="row setting link" href="/legal/privacy"><div className="main"><div className="title">隐私政策</div></div><span className="chev">›</span></Link>
               <Link className="row setting link" href="/legal/terms"><div className="main"><div className="title">服务条款</div></div><span className="chev">›</span></Link>
+              {/* 开源与分享（需求 4.1）：登录后看不到落地页，开源声明、源码链接、分享、站长微信二维码在这里再给一份 */}
+              <a className="row setting link" href={REPO_URL} target="_blank" rel="noopener"><div className="main"><div className="title">开源代码（GitHub）</div><div className="desc">{OPEN_CLAIM}</div></div><span className="chev">↗</span></a>
+              <ShareButton className="row setting link"><div className="main"><div className="title">分享给朋友</div><div className="desc">发一句介绍和网址给朋友</div></div><span className="chev">›</span></ShareButton>
+              <button type="button" className="row setting link" onClick={() => setContactOpen(true)}><div className="main"><div className="title">{AUTHOR_CONTACT.label}</div><div className="desc">微信二维码，有问题、建议直接说</div></div><span className="chev">›</span></button>
             </div>
             {/* 登录后看不到落地页，另外三个站的链接在这里再给一份（需求 4.1「四个站互相链接」） */}
             <div className="section-title">更多应用</div>
@@ -110,6 +117,7 @@ export default function SettingsPage() {
         )}
       </main>
       <InstallGuide open={guideOpen} onClose={() => setGuideOpen(false)} kind={inst.kind} iosSafari={inst.iosSafari} ipad={inst.ipad} />
+      <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} />
       <Modal open={logoutOpen} onClose={() => setLogoutOpen(false)}>
         <h3>退出登录？</h3><p>学习记录已同步到账号，下次用邮箱验证码即可重新登录。</p>
         <div className="actions"><button className="btn btn-secondary" onClick={() => setLogoutOpen(false)}>取消</button><button className="btn btn-danger" onClick={logout}>退出登录</button></div>

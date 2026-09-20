@@ -4,6 +4,7 @@
 .done-title{font-size:26px;font-weight:700;margin:0}
 .done-sub{color:var(--muted);margin:6px 0 24px}
 .recap{display:grid;grid-template-columns:repeat(3,1fr);margin-bottom:24px;border-top:1px solid var(--border);border-bottom:1px solid var(--border);padding:6px 0}
+.done-wrap .btn-block+.btn-block{margin-top:10px}
 .again{margin-top:28px;padding-top:20px;border-top:1px solid var(--border);text-align:left}
 .again h4{margin:0 0 4px;font-size:15px}
 .again p{font-size:13px;color:var(--muted);margin:0 0 12px}

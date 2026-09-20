@@ -30,7 +30,11 @@
 
 .land-foot{display:flex;flex-direction:column;align-items:center;gap:10px;font-size:13px;color:var(--faint);margin-top:40px}
 .land-foot-row{display:flex;flex-wrap:wrap;gap:16px;justify-content:center}
+/* 页脚上方的「开源」一句 */
+.land-foot-open{max-width:640px;margin:0;text-align:center;line-height:1.6}
 .land-foot a{color:var(--muted)}
+/* 「联系站长」是个按钮（弹二维码），长得和旁边的链接一样 */
+.land-foot .link-btn{border:0;background:none;padding:0;color:var(--muted);cursor:pointer}
 /* 另外三个站：名字后跟一句小字说明 */
 .land-sites a{font-weight:500}
 .land-sites a small{font-size:12px;font-weight:400;color:var(--faint);margin-left:4px}

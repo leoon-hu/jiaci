@@ -6,7 +6,7 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
 
 **在线使用：[jiaci.app](https://jiaci.app)**（邮箱验证码登录，免费；词条与内置词库在 [jiaci.app/dict](https://jiaci.app/dict) 公开可查，不用登录）
 
-> **代码与数据结构全部开源（[MIT](LICENSE)）。** 不只是应用源码：数据库表结构与迁移（`prisma/`）、词条 AI 字段的定义与校验契约（`src/lib/ai/schema.ts`）、内置词库的词表与选词规则（`lists/`、`src/lib/wordbook-rules.ts`），以及词典导入 / 词库构建 / AI 填充 / 发音生成的离线脚本（`scripts/`）都在这个仓库里。可以照此自行部署一套，也可以只拿数据模型与词表去做自己的东西。
+> **代码与数据结构全部开源（[MIT](LICENSE)）。** 不只是应用源码：数据库表结构与迁移（`prisma/`）、词条 AI 字段的定义与校验契约（`src/lib/ai/schema.ts`）、内置词库的词表与选词规则（`lists/`、`src/lib/wordbook-rules.ts`），以及词典导入 / 词库构建 / AI 填充 / 发音生成的离线脚本（`scripts/`）都在这个仓库里。可以照此自行部署一套，也可以只拿数据模型与词表去做自己的东西。免费、无广告、不卖数据，学习记录随时导出、账号随时注销；站内页脚与设置「关于」都写着这一句并链到仓库。「分享给朋友」一键调系统分享面板（微信里教用右上角菜单，电脑上复制一段话 + 链接），学完当天任务的页面还能分享今天的成绩。
 
 <p align="center">
   <img src="public/shots/home.png" width="24%" alt="今日学习">
@@ -123,6 +123,12 @@ npm run wordbooks:build
 - [同步练](https://tongbulian.jiaci.app)：人教版小学同步练习，按单元随机出题、汉字注音、题目朗读。
 - [拼音学习机](https://pinyin.jiaci.app)：给学拼音的孩子的点读 / 拼读 / 跟读 / 测验键盘，真人录音。
 - [识字卡片](https://kapian.jiaci.app)：2–4 岁看图听音认知卡片，中英文、离线。
+
+## 联系作者
+
+有问题、建议或想要的功能，欢迎加作者微信直接说（站内页脚与设置「关于」里的「联系站长」是同一张二维码）：
+
+<img src="public/wechat-qrcode.jpg" width="200" alt="作者微信二维码">
 
 ## 许可
 

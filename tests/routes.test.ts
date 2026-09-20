@@ -3,7 +3,7 @@ import { classifyPath } from "../src/lib/routes";
 
 describe("路径分类（中间件）", () => {
   it("公开页与静态资源不看会话", () => {
-    for (const p of ["/", "/login", "/login?next=/home", "/legal/privacy", "/api/me", "/dict", "/dict/abandon", "/dict/book/ielts/2", "/robots.txt", "/sitemap.xml", "/sitemap/words-0.xml", "/og.png", "/manifest.webmanifest", "/sw.js"]) {
+    for (const p of ["/", "/login", "/login?next=/home", "/legal/privacy", "/api/me", "/dict", "/dict/abandon", "/dict/book/ielts/2", "/robots.txt", "/sitemap.xml", "/sitemap/words-0.xml", "/og.png", "/wechat-qrcode.jpg", "/manifest.webmanifest", "/sw.js"]) {
       expect(classifyPath(p), p).toBe("public");
     }
   });

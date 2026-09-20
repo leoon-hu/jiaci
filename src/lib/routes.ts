@@ -7,8 +7,8 @@
  * Search Console 里就多出一堆「/xxx 重定向到 /login?next=/xxx」的网址；现在这些直接 404。
  */
 const PUBLIC = [/^\/login/, /^\/legal\//, /^\/api\//, /^\/_next\//, /^\/manifest\.webmanifest$/, /^\/icons\//, /^\/favicon\.ico$/, /^\/icon\.svg$/, /^\/apple-touch-icon\.png$/, /^\/logo-wordmark\.svg$/, /^\/sw\.js$/,
-  // 落地页用的截图、分享卡片图与爬虫入口
-  /^\/shots\//, /^\/og\.png$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/sitemap\//,
+  // 落地页用的截图、分享卡片图、站长微信二维码与爬虫入口
+  /^\/shots\//, /^\/og\.png$/, /^\/wechat-qrcode\.jpg$/, /^\/robots\.txt$/, /^\/sitemap\.xml$/, /^\/sitemap\//,
   // 匿名可看的词条与词库页（供搜索引擎收录）
   /^\/dict(\/|$)/];
 const APP = /^\/(home|study|wordbooks|import|settings|run)(\/|$)|^\/word\//;

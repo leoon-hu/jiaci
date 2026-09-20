@@ -27,4 +27,4 @@ export function middleware(req: NextRequest) {
 }
 
 // 静态文件不必进 middleware：线上这些路径已由 nginx 直接发送，本机开发下也只是白跑一次函数
-export const config = { matcher: ["/((?!_next/static|_next/image|icons/|shots/|favicon\\.ico|apple-touch-icon\\.png|logo-wordmark\\.svg|og\\.png|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|sw\\.js).*)"] };
+export const config = { matcher: ["/((?!_next/static|_next/image|icons/|shots/|favicon\\.ico|apple-touch-icon\\.png|logo-wordmark\\.svg|og\\.png|wechat-qrcode\\.jpg|robots\\.txt|sitemap\\.xml|manifest\\.webmanifest|sw\\.js).*)"] };
