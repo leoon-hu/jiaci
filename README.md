@@ -1,6 +1,6 @@
 # AI加词
 
-精简版背单词网站：内置 / 导入词库 → 每日按计划学习 → 认识 / 模糊打分 → 间隔重复安排复习。词条的核心义、义项、例句、搭配、句型、辨析、词族、助记、词源由 AI 离线填充、全局共用；用户可以写备注和反馈问题，不修改词条本身。仅中文界面，面向海外英语学习者；一套代码同时照顾手机与桌面，手机上可加到主屏幕当应用用。
+功能完整、数据完善、操作易用、免费开源、干净安全的背单词网站：内置 / 导入词库 → 每日按计划学习 → 认识 / 模糊打分 → FSRS 间隔重复安排复习；戴上耳机开跑步模式，手机熄屏放口袋也能循环听今天的词。词条的核心义、义项、例句、搭配、句型、辨析、词族、助记、词源由 AI 离线填充、全局共用；用户可以写备注和反馈问题，不修改词条本身。仅中文界面，面向海外英语学习者；一套代码同时照顾手机与桌面，手机上可加到主屏幕当应用用。
 
 Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同仓，应用就是仓库根目录。
 
@@ -15,13 +15,34 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
   <img src="public/shots/wordbook.png" width="24%" alt="单词列表">
 </p>
 
-> **English** · Jiaci (AI加词) is a minimal vocabulary trainer for Chinese speakers learning English: pick a built-in or imported word list → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users; pronunciation is server-side neural TTS. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. **Open source under MIT — the code *and* the data model** (database schema, word-entry field contracts, word lists, offline scripts) all live in this repo. Live at [jiaci.app](https://jiaci.app).
+> **English** · Jiaci (AI加词) is a full-featured, free and open-source vocabulary trainer for Chinese speakers learning English: pick one of 21 built-in word lists or import your own → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users; pronunciation is server-side neural TTS for words, sentences and translations. **Run mode** stitches today's words, meanings and example sentences into one looping audio track so you can keep listening with the phone locked in your pocket, with lock-screen and headset controls. No ads, no data selling, export or delete your account any time. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. **Open source under MIT — the code *and* the data model** (database schema, word-entry field contracts, word lists, offline scripts) all live in this repo. Live at [jiaci.app](https://jiaci.app).
 
+
+## 特点
+
+- **功能完整**：FSRS 间隔重复、21 本内置词库与导入 / 自建、学习卡与单词详情（释义 / 关联词 / 记忆 / 词频）、列表拖拽 / 多选 / 书签 / 两种自测、按词库独立进度、跑步模式、公开词典、装成应用、深色模式、桌面快捷键、数据导出。
+- **数据完善**：2.8 万个单词与短语，每个词有词典字段（ECDICT）与 AI 填充的十几个学习维度（核心义、义项、例句、搭配、句型、辨析、词族、助记、词源、语域、常见错误）；单词、例句、中文释义与例句译文全部有真人级发音；21 本词库按公开考试大纲与 NGSL / NAWL / AWL 整理。
+- **操作易用**：邮箱验证码登录，无需密码；每次只答「认识 / 模糊」，长按上滑 已掌握 / 重新记；列表横向拖动一行直接操作；手机与桌面一套代码，手机上加到主屏当应用用。
+- **免费开源**：MIT 许可，代码、数据库结构、词条字段契约、词表与离线脚本全部公开，谁都能查、也能自己部署；免费、无广告。
+- **干净安全**：不卖数据，没有社交与打卡，只收邮箱一项个人信息；学习记录随时导出，账号随时注销（30 天彻底删除）；应用运行时不调用任何 AI 接口。
+
+## 跑步模式
+
+<p align="center">
+  <img src="public/shots/run.png" width="24%" alt="跑步模式播放页">
+</p>
+
+戴上耳机跑步、走路、通勤时打开跑步模式：把今天要学和已学的词（每轮 30 / 50 / 100 / 150 个可选）连同中文释义、1–3 条例句拼成一整段音频循环播放。开跑前一次下载好，之后不再碰网络；手机熄屏、切到别的应用都不停。
+
+- 例句中英对照、句中本词高亮；可只读英文，或英文后接中文译文。
+- 锁屏与通知栏的媒体控件、耳机线控都能暂停、切上一个 / 下一个；来电、耳机断开一律停在暂停态，不会自动外放。
+- 单词、音标、释义、例句撑满一屏，字大按钮大，跑步时看一眼就清楚；「播放时保持亮屏」默认开，走路、健身房里可以一直看着。
+- 每个词读几遍、词间间隔、语速、例句读法与条数随时改，改完接着播；离开页面也不停，底部小条可随时回来。
 
 ## 设计初衷
 
 做一个边上班边学英语背单词的好工具。
-尝试过众多背单词应用，也开通过会员，不过或多或少都不太满意，所以手搓了一个，力求简洁高效，满足个人学习需求。
+尝试过众多背单词应用，也开通过会员，不过或多或少都不太满意，所以手搓了一个，力求功能完整、数据完善、用起来顺手，满足个人学习需求。
 后期可能会尝试收取一些费用或加少量广告，作为服务器和 AI 费用的补贴。
 
 
@@ -84,7 +105,7 @@ npm run dev                 # http://localhost:3000
 | `npm run typecheck` / `npm run lint` | 类型与代码检查 |
 | `npm run e2e` | 端到端 UI 测试（需先 `npm run dev`，使用本机 Chrome） |
 | `npm run e2e:shots [-- 1280 900]` | 全页面截图回归，默认手机视口 |
-| `npm run readme:shots` | 重新生成 README 与落地页用的截图（`public/shots/`，需本机有内置词库与 AI 资料） |
+| `npm run readme:shots` | 重新生成 README 与落地页用的截图（`public/shots/`，需本机有内置词库、AI 资料与发音音频；`ONLY=run` 只截跑步模式一张） |
 
 ### 内容数据
 

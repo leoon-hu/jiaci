@@ -1,7 +1,7 @@
 {
   "name": "AI加词",
   "short_name": "AI加词",
-  "description": "AI 驱动的精简背单词",
+  "description": "功能完整、免费开源的背单词应用：FSRS 间隔重复、AI 词条资料、真人级发音、跑步模式",
   "start_url": "/home",
   "display": "standalone",
   "background_color": "#f4f5f7",

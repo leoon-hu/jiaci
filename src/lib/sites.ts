@@ -31,4 +31,4 @@ export const REPO_URL = "https://github.com/leoon-hu/jiaci";
 /** 页脚与设置「关于」里的「开源」一句（落地页的开源声明是另一段更长的，文案与 README 同步） */
 export const OPEN_CLAIM = "代码与数据结构全部以 MIT 开源，谁都能查、也能自己部署；免费、无广告、不卖数据，学习记录随时导出、账号随时注销。";
 /** 「分享给朋友」发出去的一句话（后面跟站点链接） */
-export const SHARE_TEXT = "AI加词：精简、高效的背单词网站——FSRS 间隔重复、AI 填充的词条资料、真人级发音，21 本内置词库。免费、开源、无广告。";
+export const SHARE_TEXT = "AI加词：功能完整、免费开源的背单词网站——FSRS 间隔重复、21 本内置词库、AI 填充的词条资料、真人级发音，跑步模式熄屏也能听。无广告、不卖数据。";

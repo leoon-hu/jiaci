@@ -13,6 +13,12 @@
 .land-open strong{color:var(--primary)}
 .land-open a{font-weight:600;text-decoration:underline}
 
+/* 五点定位（功能完整 / 数据完善 / 操作易用 / 免费开源 / 干净安全）：一排五小块，标题主色，正文小字 */
+.land-pillars{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin:8px 0 20px}
+.land-pillars div{padding:14px 14px 12px;border:1px solid var(--border);border-radius:var(--radius);background:var(--card)}
+.land-pillars h3{font-size:16px;font-weight:700;color:var(--primary);margin:0 0 6px}
+.land-pillars p{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+
 .land-shots{display:flex;gap:16px;justify-content:center;overflow-x:auto;padding:8px 0 16px;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch}
 .land-shots figure{flex:0 0 260px;margin:0;scroll-snap-align:center}
 .land-shots img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow-lg);background:var(--card)}
@@ -22,6 +28,15 @@
 .land-features .card{margin:0}
 .land-features h3{font-size:16px;margin:0 0 6px}
 .land-features p{margin:0;color:var(--muted);font-size:14px}
+
+/* 跑步模式一节：左边说明，右边一张播放页截图 */
+.land-run{margin-top:24px;display:flex;gap:28px;align-items:center}
+.land-run-text{flex:1;min-width:0}
+.land-run h2{font-size:18px;margin:0 0 8px}
+.land-run p{color:var(--muted);margin:0 0 10px}
+.land-run ul{margin:0;padding-left:1.2em;color:var(--muted);font-size:14px;line-height:1.7}
+.land-run figure{flex:0 0 220px;margin:0}
+.land-run img{display:block;width:100%;height:auto;border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow-lg);background:var(--card)}
 
 .land-why{margin-top:24px}
 .land-why h2{font-size:18px;margin:0 0 8px}
@@ -48,7 +63,13 @@
   .land-shots{justify-content:flex-start;margin:0 -16px;padding:8px 16px 16px}
   .land-shots figure{flex-basis:220px}
   .land-features{grid-template-columns:1fr}
+  .land-pillars{grid-template-columns:1fr;gap:8px}
+  .land-pillars div{padding:12px 14px 10px}
+  /* 手机上说明在上、截图在下，截图居中不撑满 */
+  .land-run{flex-direction:column;align-items:stretch;gap:16px}
+  .land-run figure{flex:none;width:200px;margin:0 auto}
 }
 @media (min-width:768px) and (max-width:1023px){
   .land-features{grid-template-columns:repeat(2,1fr)}
+  .land-pillars{grid-template-columns:repeat(3,1fr)}
 }
