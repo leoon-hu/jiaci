@@ -7,6 +7,8 @@ const nextConfig: NextConfig = {
   serverExternalPackages: ["msedge-tts"],
   // 不对外报框架版本（审计 F127）
   poweredByHeader: false,
+  // 末尾斜杠的 308 由中间件自己做：存在的页面才跳到规范地址，不存在的路径直接 404 而不是先重定向一次（见 src/middleware.ts）
+  skipTrailingSlashRedirect: true,
   // 基础安全响应头；CSP 涉及 Next 的内联脚本，留待单独评估
   async headers() {
     return [{

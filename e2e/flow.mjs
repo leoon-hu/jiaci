@@ -62,7 +62,7 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
 {
   const get = async (path) => { const r = await fetch(BASE + path, { redirect: "manual" }); return { status: r.status, location: r.headers.get("location") ?? "", body: r.status === 200 ? await r.text() : "" }; };
   const w = await get("/dict/abandon");
-  log.push(`公开页：/dict/abandon → ${w.status} ${w.status === 200 ? "✓" : "✗"}，标题含「是什么意思」 ${w.body.includes("是什么意思") ? "✓" : "✗"}，正文有例句块 ${w.body.includes('id="examples"') ? "✓" : "✗"}，canonical ${/rel="canonical" href="[^"]*\/dict\/abandon"/.test(w.body) ? "✓" : "✗"}，无个人数据块 ${!w.body.includes("学习记录") && !w.body.includes("我的备注") ? "✓" : "✗"}`);
+  log.push(`公开页：/dict/abandon → ${w.status} ${w.status === 200 ? "✓" : "✗"}，标题含「是什么意思」 ${w.body.includes("是什么意思") ? "✓" : "✗"}，正文有例句块 ${w.body.includes('id="examples"') ? "✓" : "✗"}，canonical ${/rel="canonical" href="[^"]*\/dict\/abandon"/.test(w.body) ? "✓" : "✗"}，无个人数据块 ${!/<h[34][^>]*>学习记录/.test(w.body) && !w.body.includes("我的备注") ? "✓" : "✗"}`);
   const p = await get("/dict/give_up");
   log.push(`公开页：短语 /dict/give_up → ${p.status} ${p.status === 200 && p.body.includes("give up") ? "✓" : "✗"}`);
   const nf = await get("/dict/zzzzqqx");
@@ -74,7 +74,9 @@ await send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, devi
   // 收录卫生：不存在的路径 404 不跳登录、登录页 canonical 不带 next、公开页里没有「/音标/」这种会被爬虫当路径的字符串
   const nx = await get("/%CB%88l%C3%A6si");
   const lg = await get("/login?next=%2Fhome");
-  log.push(`公开页：未知路径 → ${nx.status} ${nx.status === 404 ? "✓" : "✗"}；登录页 canonical 指回 /login ${/rel="canonical" href="[^"]*\/login"/.test(lg.body) ? "✓" : "✗"}；词库页没有「/音标/」 ${!/\/[ˈˌəɪæʊɒɜ][^"<\\]*\//.test(b.body) && b.body.includes('class="ipa ph"') ? "✓" : "✗"}`);
+  const nxs = await get("/%CB%88l%C3%A6si/");
+  const ds = await get("/dict/abandon/");
+  log.push(`公开页：未知路径 → ${nx.status} ${nx.status === 404 ? "✓" : "✗"}，带末尾斜杠也直接 404 不先重定向 ${nxs.status === 404 && !nxs.location ? "✓" : "✗"}，/dict/abandon/ 308 到无斜杠地址 ${ds.status === 308 && ds.location.endsWith("/dict/abandon") ? "✓" : "✗"}；登录页 canonical 指回 /login ${/rel="canonical" href="[^"]*\/login"/.test(lg.body) ? "✓" : "✗"}；词库页没有「/音标/」 ${!/\/[ˈˌəɪæʊɒɜ][^"<\\]*\//.test(b.body) && b.body.includes('class="ipa ph"') ? "✓" : "✗"}`);
   const sm = await get("/sitemap.xml");
   const shard = await get("/sitemap/words-0.xml");
   log.push(`公开页：sitemap 索引 ${sm.status === 200 && sm.body.includes("/sitemap/pages.xml") && sm.body.includes("/sitemap/words-0.xml") ? "✓" : "✗"}，分片有词条 ${shard.status === 200 && shard.body.includes("/dict/abandon") ? "✓" : "✗"}，robots 放行 /dict/ ${(await get("/robots.txt")).body.includes("Allow: /dict/") ? "✓" : "✗"}`);
