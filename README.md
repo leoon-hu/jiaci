@@ -98,6 +98,8 @@ npm run dev                 # http://localhost:3000
 
 没有配置邮件服务的 Key 时，开发环境的验证码直接显示在登录页上。线上要在 `.env` 里写 `SITE_URL`（对外地址），分享卡片、robots 与 sitemap 里的绝对地址都按它拼；登录页与 robots / sitemap 是构建时预渲染的，在别的机器上构建时那台机器的 `.env` 也要有。
 
+访问统计（可选）：构建机的 `.env` 里同时写 `NEXT_PUBLIC_UMAMI_SCRIPT=https://你的统计站/script.js` 与 `NEXT_PUBLIC_UMAMI_WEBSITE_ID=<站点 id>`，每页会多一行 [Umami](https://umami.is)（开源、无 cookie）的上报脚本，只记页面、来源、设备与地区，账号与学习记录不上报、查询串也不带；`data-domains` 取 `SITE_URL` 的主机名。两项都不配就什么都不加（逻辑在 `src/lib/analytics.ts` + `components/Analytics.tsx`）。
+
 | 命令 | 说明 |
 |---|---|
 | `npm run dev` / `build` / `start` | 开发 / 构建 / 生产启动 |

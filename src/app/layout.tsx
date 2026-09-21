@@ -2,7 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/Toast";
 import NavTracker from "@/components/NavTracker";
+import Analytics from "@/components/Analytics";
 import { siteUrl } from "@/lib/site";
+import { analyticsConfig } from "@/lib/analytics";
 
 const DESCRIPTION = "功能完整、免费开源的背单词网站：FSRS 间隔重复、21 本内置词库、AI 填充的词条资料、真人级发音，跑步模式熄屏也能循环听今天的词。数据完善、操作易用、无广告、不卖数据；仅中文界面，面向海外英语学习者。";
 
@@ -30,6 +32,9 @@ const swScript = `if('serviceWorker' in navigator && location.hostname!=='localh
  */
 const installScript = `window.addEventListener('beforeinstallprompt',function(e){e.preventDefault();window.__aiwordInstall=e;window.dispatchEvent(new Event('aiword:install'))});window.addEventListener('appinstalled',function(){window.__aiwordInstall=null;try{localStorage.setItem('aiword.installed','1')}catch(e){}window.dispatchEvent(new Event('aiword:install'))});`;
 
+/** 访问统计（需求 4.1）：NEXT_PUBLIC_* 要按字面量引用才会在构建时内联；两项都配了才有配置，没配就不渲染 */
+const analytics = analyticsConfig({ script: process.env.NEXT_PUBLIC_UMAMI_SCRIPT, websiteId: process.env.NEXT_PUBLIC_UMAMI_WEBSITE_ID, siteUrl: siteUrl() });
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN" suppressHydrationWarning>
@@ -40,6 +45,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body>
         <NavTracker />
+        <Analytics config={analytics} />
         <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
