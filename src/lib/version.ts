@@ -17,6 +17,8 @@ export const FETCH_TIMEOUT_MS = 10_000;
 export const UPDATE_CHECK_MS = 15_000;
 /** 新的 SW 这么久还没接管：说「还在下载」，同时给「清除缓存重新加载」 */
 export const UPDATE_SLOW_MS = 60_000;
+/** 「清除缓存重新加载」时注销最多等这么久：注销排在正在进行的 SW 安装后面，不等它装完，发出去就接着删缓存、重新载入 */
+export const UNREGISTER_WAIT_MS = 3000;
 /** sessionStorage：刚才要更新到哪个版本（重新载入后比对用） */
 export const UPDATE_NOTE_KEY = "aiword:update";
 /** 问服务端现在是哪个版本的接口 */
@@ -146,18 +148,20 @@ export interface ReinstallDeps {
   sw: ContainerLike | null;
   caches: CachesLike | null;
   reload: () => void;
+  wait?: (ms: number) => Promise<void>;
 }
 
 function defaultReinstallDeps(): ReinstallDeps {
   return { sw: swContainer(), caches: typeof caches === "undefined" ? null : caches, reload: () => location.reload() };
 }
 
-/** 「清除缓存重新加载」：注销本站全部 SW、删掉全部缓存，然后重新载入；哪一步出错都照样重新载入 */
+/** 「清除缓存重新加载」：注销本站全部 SW（最多等 UNREGISTER_WAIT_MS）、删掉全部缓存，然后重新载入；哪一步出错都照样重新载入 */
 export async function reinstall(deps: ReinstallDeps = defaultReinstallDeps()): Promise<void> {
   try {
     const sw = deps.sw;
     const regs = sw ? (sw.getRegistrations ? await sw.getRegistrations() : [await sw.getRegistration()]) : [];
-    for (const r of regs) await r?.unregister().catch(() => false);
+    const wait = deps.wait ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+    await Promise.race([Promise.all(regs.map((r) => r?.unregister().catch(() => false))), wait(UNREGISTER_WAIT_MS)]);
   } catch {
     /* 没有就算了 */
   }

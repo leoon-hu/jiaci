@@ -4,6 +4,7 @@ import {
   UPDATE_CHECK_MS,
   UPDATE_NOTE_KEY,
   UPDATE_SLOW_MS,
+  UNREGISTER_WAIT_MS,
   applyUpdate,
   checkVersion,
   noteUpdate,
@@ -163,6 +164,17 @@ describe("清除缓存重新加载：reinstall", () => {
     const broken: ContainerLike = { getRegistration: async () => Promise.reject(new Error("x")), addEventListener: () => {} };
     await reinstall({ sw: broken, caches: { keys: async () => Promise.reject(new Error("x")), delete: async () => true }, reload: reload3 });
     expect(reload3).toHaveBeenCalledTimes(1);
+  });
+  it("注销卡在正在进行的安装后面：最多等 UNREGISTER_WAIT_MS，照样删缓存、重新载入", async () => {
+    const waits: number[] = [];
+    const reg: RegistrationLike = { update: async () => undefined, installing: null, waiting: null, unregister: () => new Promise(() => {}) };
+    const sw: ContainerLike = { getRegistration: async () => reg, getRegistrations: async () => [reg], addEventListener: () => {} };
+    const deleted: string[] = [];
+    const reload = vi.fn();
+    await reinstall({ sw, caches: { keys: async () => ["a"], delete: async (n) => (deleted.push(n), true) }, reload, wait: async (ms) => void waits.push(ms) });
+    expect(waits).toEqual([UNREGISTER_WAIT_MS]);
+    expect(deleted).toEqual(["a"]);
+    expect(reload).toHaveBeenCalledTimes(1);
   });
 });
 
