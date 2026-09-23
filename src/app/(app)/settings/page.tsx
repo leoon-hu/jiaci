@@ -13,6 +13,7 @@ import type { UserSettings } from "@/lib/settings";
 import { AUTHOR_CONTACT, OPEN_CLAIM, REPO_URL, SISTER_SITES } from "@/lib/sites";
 import { ContactModal } from "@/components/ContactLink";
 import ShareButton from "@/components/ShareButton";
+import AppVersion from "@/components/AppVersion";
 import "./settings.css";
 
 function Seg<T extends string>({ value, options, onChange }: { value: T; options: Array<[T, string]>; onChange: (v: T) => void }) {
@@ -98,7 +99,8 @@ export default function SettingsPage() {
             </div>
             <div className="section-title">关于</div>
             <div className="list edge">
-              <div className="row setting"><div className="main"><div className="title">版本</div></div><div className="ctl muted small">v0.1.0</div></div>
+              {/* 当前版本 + 检查更新（需求 3.5）：与另外三个站页脚的版本卡片同一套逻辑 */}
+              <AppVersion />
               <Link className="row setting link" href="/legal/privacy"><div className="main"><div className="title">隐私政策</div></div><span className="chev">›</span></Link>
               <Link className="row setting link" href="/legal/terms"><div className="main"><div className="title">服务条款</div></div><span className="chev">›</span></Link>
               {/* 开源与分享（需求 4.1）：登录后看不到落地页，开源声明、源码链接、分享、站长微信二维码在这里再给一份 */}

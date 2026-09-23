@@ -12,3 +12,9 @@
 .danger-zone .title{color:var(--danger)}
 .saved{font-size:12px;color:var(--ok);opacity:0;transition:.2s}
 .saved.show{opacity:1}
+.app-version .ver{font-variant-numeric:tabular-nums}
+.app-version .ver-status{font-size:13px;font-weight:600;color:var(--muted);margin-top:6px}
+.app-version .ver-status.ok{color:var(--ok)}
+.app-version .ver-status.warn{color:var(--warn)}
+.app-version .ver-more{font-size:12px;color:var(--muted);margin-top:2px}
+.app-version .ver-more button{border:0;background:none;padding:4px 2px;font:inherit;font-weight:600;color:var(--text);text-decoration:underline;text-underline-offset:3px;cursor:pointer}
