@@ -1,8 +1,21 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RateResult } from "@/lib/scheduler";
 
 type Alt = { action: RateResult; label: string; sub: string; cls: string };
+
+/**
+ * 页面底部要给打分栏让出多高：打分栏是 fixed 的，高度随「长按提示」「已掌握 / 已移出」那一行变（76–130px 上下），
+ * 写死的留白总有一种放不下、把最下面的「操作」盖住。这里把实测高度写进 :root 的 --ratebar-h，
+ * 留白（globals.css 的 .has-ratebar-pad、学习页的 #answer .page）按它算。
+ * 详情浮层盖在学习页上时同时挂着两个打分栏，取较高的那个，卸载时重新算
+ */
+const barHeights = new Map<object, number>();
+function publishBarHeight() {
+  const h = Math.max(0, ...barHeights.values());
+  const s = document.documentElement.style;
+  if (h) s.setProperty("--ratebar-h", `${h}px`); else s.removeProperty("--ratebar-h");
+}
 
 /**
  * 底部悬浮打分栏（需求 3.2.5）：认识 / 模糊 两个按钮；
@@ -16,6 +29,20 @@ export default function RateBar({ labels, mastered, removed = false, onRate, dis
   const lp = useRef<{ btn: HTMLButtonElement; alt: Alt; x: number; y: number; timer: ReturnType<typeof setTimeout> | null; active: boolean; cancelled: boolean } | null>(null);
   const innerRef = useRef<HTMLDivElement>(null);
   const popupRef = useRef<HTMLDivElement>(null);
+  const barRef = useRef<HTMLDivElement>(null);
+  const only = mastered || removed;
+
+  // 两种样子是两个不同的元素（只有「重新记」/ 认识 + 模糊），换了样子要重新挂观察
+  useLayoutEffect(() => {
+    const el = barRef.current;
+    if (!el) return;
+    const key = {};
+    const apply = () => { barHeights.set(key, el.offsetHeight); publishBarHeight(); };
+    apply();
+    const ro = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(apply);
+    ro?.observe(el);
+    return () => { ro?.disconnect(); barHeights.delete(key); publishBarHeight(); };
+  }, [only]);
 
   useEffect(() => { try { setTip(!mastered && !removed && !localStorage.getItem("aiword.lpTip")); } catch { /* ignore */ } }, [mastered, removed]);
   useEffect(() => {
@@ -74,9 +101,9 @@ export default function RateBar({ labels, mastered, removed = false, onRate, dis
   });
 
   // 已掌握 / 已移出的词只给「重新记」：直接打「认识」会把它悄悄放回复习队列（审计 NU08）
-  if (mastered || removed) {
+  if (only) {
     return (
-      <div className="rate-bar">
+      <div className="rate-bar" ref={barRef}>
         <div className="rate-hint">{removed ? "该词已移出学习，不再出现" : "该词已掌握，不再进入学习"}</div>
         <div className="inner single"><button {...btnProps("reset", null)} className={"rate-btn rate-reset" + (pressed === "reset" ? " pressed" : "")} aria-keyshortcuts="4">重新记<span className="key" aria-hidden>快捷键 4</span><small>{removed ? "放回当前词库，按新词重新开始背" : "保留学习记录，按新词重新开始背"}</small></button></div>
       </div>
@@ -87,7 +114,7 @@ export default function RateBar({ labels, mastered, removed = false, onRate, dis
   return (
     <>
       {popup && <div className="rate-mask" />}
-      <div className="rate-bar">
+      <div className="rate-bar" ref={barRef}>
         {tip && <div className="lp-tip">长按「认识」可标记已掌握，长按「模糊」可重新记<button className="lp-tip-close" type="button" onClick={() => { try { localStorage.setItem("aiword.lpTip", "1"); } catch { /* ignore */ } setTip(false); }}>知道了</button></div>}
         <div className="inner" ref={innerRef}>
           {popup && (

@@ -91,6 +91,8 @@
 .s-opt.master{background:var(--st-green)}
 .s-opt.bookmark{background:var(--primary)}
 .s-opt.remove{background:#475569}
+/* 「删除」（只有自建词库）：从词库删掉，比「移出」重，用暗红与「重新记」的红区分开 */
+.s-opt.delete{background:#991b1b}
 .s-opt.active{filter:brightness(1.08)}
 .s-opt.active::before{content:"";position:absolute;inset:0;border:2px solid rgba(255,255,255,.9);border-radius:6px;box-sizing:border-box;pointer-events:none}
 /* 跟手的小卡片：拖动时整行内容收成它，落在哪个按钮上就执行哪个。
@@ -108,6 +110,7 @@
 .s-chip.reset{--c:var(--st-red)}
 .s-chip.master{--c:var(--st-green)}
 .s-chip.remove{--c:#475569}
+.s-chip.delete{--c:#991b1b}
 .s-chip.know{--c:var(--st-yellow)}
 /* 松手：卡片飞向按钮中心（取消则飞回按下的位置）并淡出 */
 .s-chip.dropping{transition:transform .18s ease-out,opacity .18s ease-out;opacity:0}
@@ -125,11 +128,15 @@
 .sel-bar .row{display:flex;gap:8px;align-items:center}
 .sel-bar .sel-count{font-weight:700;font-size:14px;white-space:nowrap}
 .sel-bar .row .grow{text-align:right}
+/* 多选「加入词库」：不改学习状态，和下面一排彩色的状态操作分开放在第一行右边；手机上提示文字隐藏，靠 margin 推到最右 */
+.sel-bar .sel-collect{flex:none;margin-left:auto}
+.sel-bar .sel-collect svg{width:16px;height:16px}
 .sel-bar .acts .btn{flex:1;color:#fff;font-weight:700;min-height:42px}
 .sel-bar .act-cancel{background:var(--bg);color:var(--text);border-color:var(--border-strong);flex:0 0 auto;padding:0 16px}
 .sel-bar .act-reset{background:var(--st-red)}
 .sel-bar .act-master{background:var(--st-green)}
 .sel-bar .act-remove{background:#475569}
+.sel-bar .act-delete{background:#991b1b}
 .sel-bar .btn:disabled{opacity:.45;cursor:not-allowed}
 .page.has-selbar{padding-bottom:150px}
 @media (max-width:767px){.sel-bar{bottom:calc(var(--tab-h) + env(safe-area-inset-bottom));padding-bottom:10px}.sel-bar .row .grow{display:none}}

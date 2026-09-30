@@ -1,5 +1,5 @@
 /**
- * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 长按打分 → 详情页词典兜底 → 跑步模式（拼接播放、切词、小条）
+ * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 多选加入词库 + 自建词库删词 → 长按打分 → 详情页词典兜底 → 跑步模式（拼接播放、切词、小条）
  * 不依赖任何内置词库：每次用新账号，在页面内通过接口新建「e2e 测试词库」，结束后删除。
  * 用法：npm run dev 后执行 `npm run e2e`（默认 http://localhost:3000，输出截图到 e2e/out）
  * 环境变量：BASE_URL、CHROME（Chrome 可执行文件路径）
@@ -301,6 +301,39 @@ if (await evalJs(`!!${BIG}`)) {
 } else {
   // 没建内置词库的环境（还没跑 wordbooks:build）不算失败，但要说清楚少测了什么（审计 F157）
   log.push("内置词库：库里没有「雅思词汇」，跳过分页与排序检查（跑 npm run wordbooks:build 后再测）");
+}
+// ---- 3d. 多选「加入词库」当场新建一本 → 在那本自建词库里拖到「删除」（需求 3.3.4 / 3.3.5）----
+// 另建一本来删，不动测试词库：后面的学习与跑步模式还按它的词数走
+if (fixture.id) {
+  await send("Page.navigate", { url: BASE + `/wordbooks/${fixture.id}` });
+  await waitFor("document.querySelectorAll('.s-content').length > 1", 10000);
+  const q0 = await rowRect(0);
+  await mouse("mousePressed", q0.x + q0.w / 2, q0.y + q0.h / 2); await sleep(700); await mouse("mouseReleased", q0.x + q0.w / 2, q0.y + q0.h / 2); await sleep(400);
+  await evalJs("document.querySelectorAll('.s-content')[1]?.click()"); await sleep(300);
+  await evalJs("document.querySelector('.sel-bar .sel-collect')?.click()");
+  const listed = await waitFor("document.querySelector('.modal .collect-new')", 8000);
+  const self = await evalJs("[...document.querySelectorAll('.collect-list .title')].some(t=>t.textContent==='e2e 测试词库')");
+  await evalJs(`(()=>{const i=document.querySelector('.collect-new .input');const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;s.call(i,'e2e 收集');i.dispatchEvent(new Event('input',{bubbles:true}));})()`); await sleep(100);
+  await evalJs("document.querySelector('.collect-new .btn')?.click()");
+  const added = await waitFor("[...document.querySelectorAll('.collect-list .row')].some(r=>r.textContent.includes('e2e 收集')&&r.querySelector('.collect-in'))", 8000);
+  await shot("e2e-batch-collect");
+  await evalJs("[...document.querySelectorAll('.modal .actions .btn')].find(b=>b.textContent==='完成')?.click()"); await sleep(400);
+  const exited = await evalJs("!document.querySelector('.sel-bar')");
+  log.push(`多选加入词库：选择框打开 ${listed ? "✓" : "✗"}、不列正在看的这本 ${!self ? "✓" : "✗"}；当场新建「e2e 收集」并加入 ${added ? "✓" : "✗"}；点「完成」退出多选 ${exited ? "✓" : "✗"}`);
+  const collectId = await evalJs("fetch('/api/wordbooks').then(r=>r.json()).then(j=>j.wordbooks.find(b=>b.name==='e2e 收集')?.id)");
+  if (collectId) {
+    await send("Page.navigate", { url: BASE + `/wordbooks/${collectId}` });
+    await waitFor("document.querySelectorAll('.s-content').length === 2", 10000);
+    const hint = await evalJs("document.querySelector('.list-hint')?.textContent.includes('/ 删除')");
+    const first = await evalJs("document.querySelector('.srow')?.dataset.sp");
+    const d = await dragToOpt(0, "delete", "e2e-drag-delete");
+    const goneNow = await evalJs(`!document.querySelector('.srow[data-sp="${first}"]') && document.querySelector('.chips .cnt')?.textContent === '1'`);
+    await sleep(6000);
+    await send("Page.reload"); await waitFor("document.querySelectorAll('.s-content').length > 0", 10000); await sleep(500);
+    const left = await evalJs("[...document.querySelectorAll('.srow')].map(r=>r.dataset.sp)");
+    log.push(`自建词库删词：提示行有「删除」 ${hint ? "✓" : "✗"}，拖到「删除」→ 卡片「${d.chip}」、高亮「${d.picked}」 ${d.chip === first && d.picked?.startsWith("删除") ? "✓" : "✗"}，行立刻消失、全部 2→1 ${goneNow ? "✓" : "✗"}；提交并刷新后只剩「${left.join("、")}」 ${left.length === 1 && left[0] !== first ? "✓" : "✗"}`);
+    await evalJs(`fetch('/api/wordbooks/${collectId}',{method:'DELETE'})`);
+  }
 }
 // ---- 4. 学习：正面 → 点击显示答案 → 长按认识上滑到已掌握 ----
 await send("Page.navigate", { url: BASE + "/study" }); await sleep(4000);

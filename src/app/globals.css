@@ -324,6 +324,17 @@ button.row{width:100%;border:0;border-top:1px solid var(--border);background:non
 /* 「联系站长」弹窗里的微信二维码：居中一张，手机上长按识别 */
 .contact-qr{display:flex;justify-content:center;margin-top:12px}
 .contact-qr img{width:220px;height:auto;border-radius:12px;background:#fff}
+/* 「加入我的词库」选择框（需求 3.3.4）：自建词库一本一行，右边「加入」或「✓ 已加入」；词库多了在框里滚动 */
+.collect-list{margin-top:12px;max-height:min(46vh,360px);overflow-y:auto;box-shadow:none}
+.collect-list .row{padding:10px 14px;min-height:52px}
+.collect-list .row .main{display:flex;flex-direction:column;gap:1px}
+.collect-list .row .sub{font-size:12px}
+.collect-list .row .btn{flex:none}
+.collect-in{flex:none;display:inline-flex;align-items:center;gap:4px;color:var(--ok);font-size:13px;font-weight:600}
+.collect-in svg{width:14px;height:14px}
+.collect-new{display:flex;gap:8px;margin-top:12px}
+.collect-new .input{flex:1;min-width:0}
+.collect-new .btn{flex:none}
 /* 「分享给朋友」弹窗里的那段话：可以选中复制 */
 .share-message{margin:12px 0 0;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg);font:inherit;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-all;user-select:text}
 @keyframes pop{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
@@ -428,7 +439,9 @@ kbd{display:inline-block;padding:1px 6px;border:1px solid var(--border-strong);b
 @keyframes popup{from{opacity:0;transform:translateY(10px) scale(.95)}to{opacity:1;transform:none}}
 .rate-mask{position:fixed;inset:0;z-index:29;background:rgba(10,12,18,.18);animation:fade .15s}
 @keyframes fade{from{opacity:0}to{opacity:1}}
-body.has-ratebar,.has-ratebar-pad{padding-bottom:calc(110px + env(safe-area-inset-bottom))}
+/* 给底部打分栏让出的留白：--ratebar-h 是打分栏的实测高度（RateBar 写进 :root，已含安全区），再多留一点呼吸；
+   详情浮层的 .sheet-body 自己有底部内边距、选择器更具体，要单独压过去，不然最下面的「操作」被打分栏盖住 */
+.has-ratebar-pad,.word-sheet .sheet-body.has-ratebar-pad{padding-bottom:calc(var(--ratebar-h, calc(110px + env(safe-area-inset-bottom))) + 16px)}
 
 /* ---------- 学习记录：简洁模式（一行标签，不换行，可横向滑动） ---------- */
 .hist-compact{display:flex;align-items:center;gap:8px}
@@ -471,6 +484,9 @@ textarea.input.note-input{min-height:220px;font-size:16px;line-height:1.6}
 .peek-def .pos{margin-right:6px}
 .peek-foot{display:flex;align-items:center;justify-content:space-between;margin-top:6px;font-size:12px;color:var(--faint)}
 .peek-foot .go{color:var(--primary);font-weight:600;font-size:13px}
+/* 小框底部左边的「加入我的词库」：比常规小按钮再矮一点，不把小框撑高 */
+.peek-foot .peek-collect{min-height:30px;padding:0 10px;font-size:12px;gap:4px}
+.peek-foot .peek-collect svg{width:14px;height:14px}
 
 /* ---------- 单词详情：四个 Tab 的内容块（核心义 / 义项 / 搭配 / 句型 / 关联词 / 记忆） ---------- */
 .core-def{font-size:20px;font-weight:700;line-height:1.45}

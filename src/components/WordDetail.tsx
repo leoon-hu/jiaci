@@ -14,7 +14,7 @@ import SwipeTabs from "./SwipeTabs";
 import WordFreqPanel from "./WordFreqPanel";
 import { wordKind } from "@/lib/words";
 import Modal from "./Modal";
-import Link from "next/link";
+import CollectModal, { type CollectTarget } from "./CollectModal";
 import { IconBookmark, IconChevron, IconEdit, IconSpeaker, IconFlag } from "./Icons";
 import { useToast } from "./Toast";
 
@@ -29,8 +29,6 @@ const LEVEL: Record<number, string> = { 1: "基础", 2: "自然", 3: "场景" };
 const TABS = ["释义", "关联词", "记忆", "词频"];
 /** 首屏默认折叠的块 */
 type FoldKey = "meanings" | "collocations" | "phrases" | "patterns" | "family";
-
-export type Wordbook = { id: string; name: string; type: string; wordCount: number };
 
 const AI = () => <span className="ai">AI</span>;
 /** 折叠块的一行摘要：前几条 + 条数 */
@@ -65,15 +63,17 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
   const [fbText, setFbText] = useState("");
   const [fbBusy, setFbBusy] = useState(false);
   const [noteText, setNoteText] = useState(detail.note ?? "");
-  const [collectOpen, setCollectOpen] = useState(false);
-  const [books, setBooks] = useState<Wordbook[]>([]);
-  const [bookId, setBookId] = useState("");
+  /** 「加入我的词库」选择框正在给哪个词开：本词（操作区）或点词小框里的词；null = 关着 */
+  const [collectFor, setCollectFor] = useState<CollectTarget | null>(null);
 
   useEffect(() => { setNoteText(detail.note ?? ""); setExpanded(false); setAllHistory(false); setPeek(null); }, [detail.spelling, detail.note]);
   useEffect(() => { setTab(0); setOpen({}); }, [detail.spelling]);
 
   const onPick = useCallback((base: string) => setPeek(base), []);
   const closePeek = useCallback(() => setPeek(null), []);
+  // 小框点了「加入我的词库」就先收起：选择框在小框外面，点选择框本来也会把它关掉
+  const collectPeek = useCallback((spelling: string) => { setPeek(null); setCollectFor({ spelling }); }, []);
+  const closeCollect = useCallback(() => setCollectFor(null), []);
 
   // 首屏折叠块：有内容的才算；「全部展开 / 全部收起」
   const foldKeys: FoldKey[] = [];
@@ -103,21 +103,6 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
       await api(`/api/words/${encodeURIComponent(detail.spelling)}/feedback`, { method: "POST", json: { content } });
       setFbOpen(false); setFbText(""); toast("感谢反馈，我们会尽快核对");
     } catch (e) { toast((e as Error).message); } finally { setFbBusy(false); }
-  }
-  async function openCollect() {
-    setCollectOpen(true);
-    try {
-      const r = await api<{ wordbooks: Wordbook[] }>("/api/wordbooks");
-      const custom = r.wordbooks.filter((b) => b.type === "custom");
-      setBooks(custom); setBookId(custom[0]?.id ?? "");
-    } catch (e) { setCollectOpen(false); toast((e as Error).message); }
-  }
-  async function collect() {
-    if (!bookId) return;
-    try {
-      const r = await api<{ added: boolean; name: string }>(`/api/words/${encodeURIComponent(detail.spelling)}/collect`, { method: "POST", json: { wordbookId: bookId } });
-      setCollectOpen(false); toast(r.added ? `已加入「${r.name}」` : `「${r.name}」中已有该词`);
-    } catch (e) { setCollectOpen(false); toast(`没有加入成功：${(e as Error).message}`); }
   }
 
   const p = detail.progress;
@@ -224,7 +209,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
               </div>
               <div className="detail-ops"><h4>操作</h4><div className="btns">
                 <button className="btn btn-secondary" onClick={() => setNoteOpen(true)}><IconEdit />{detail.note ? "修改备注" : "备注"}</button>
-                <button className="btn btn-secondary" onClick={openCollect}><IconBookmark />加入我的词库</button>
+                <button className="btn btn-secondary" onClick={() => setCollectFor({ spelling: detail.spelling })}><IconBookmark />加入我的词库</button>
                 <button className="btn btn-secondary" onClick={() => { setFbText(""); setFbOpen(true); }}><IconFlag />反馈</button>
               </div></div>
             </div>
@@ -257,7 +242,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
         </div>
       </div>
 
-      <WordPeek word={peek} book={detail.bookId} accent={accent} voice={settings.voice} onClose={closePeek} autoSpeak={settings.autoReadDetail} />
+      <WordPeek word={peek} book={detail.bookId} accent={accent} voice={settings.voice} onClose={closePeek} onCollect={collectPeek} autoSpeak={settings.autoReadDetail} />
 
       <Modal open={noteOpen} onClose={() => setNoteOpen(false)}>
         <h3>我的备注</h3>
@@ -285,16 +270,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
         </div>
       </Modal>
 
-      <Modal open={collectOpen} onClose={() => setCollectOpen(false)}>
-        <h3>加入我的词库</h3>
-        <p>把这个单词收藏到你创建的词库。</p>
-        {books.length ? (
-          <div className="list flat">{books.map((b) => (
-            <label className="row link" key={b.id}><input type="radio" name="wb" checked={bookId === b.id} onChange={() => setBookId(b.id)} /> <span className="main"><span className="title">{b.name}</span><span className="sub">{b.wordCount} 词</span></span></label>
-          ))}</div>
-        ) : <p className="muted small">你还没有自建词库。<Link href="/wordbooks/new">+ 新建词库</Link></p>}
-        <div className="actions"><button className="btn btn-secondary" onClick={() => setCollectOpen(false)}>取消</button><button className="btn btn-primary" disabled={!bookId} onClick={collect}>加入</button></div>
-      </Modal>
+      <CollectModal target={collectFor} onClose={closeCollect} />
     </PickCtx.Provider>
   );
 }

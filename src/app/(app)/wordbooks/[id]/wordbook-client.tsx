@@ -1,15 +1,16 @@
 "use client";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { coverText } from "@/lib/client/format";
 import Pie from "@/components/Pie";
-import { IconArrowUp, IconBookmarkSolid, IconChevron, IconSearch, IconSpeaker } from "@/components/Icons";
+import { IconArrowUp, IconBookmark, IconBookmarkSolid, IconChevron, IconSearch, IconSpeaker } from "@/components/Icons";
 import { useToast } from "@/components/Toast";
 import Dropdown from "@/components/Dropdown";
 import Modal from "@/components/Modal";
+import CollectModal from "@/components/CollectModal";
 import { api, localToday } from "@/lib/client/api";
 import { speakWordAndDef, voiceKeyOf, type VoiceKey } from "@/lib/client/speech";
 import { useMe } from "@/lib/client/useMe";
@@ -40,15 +41,20 @@ type ListMode = "both" | "en" | "zh";
 const MODES: Array<[ListMode, string]> = [["both", "英文 + 释义"], ["en", "隐藏释义"], ["zh", "隐藏英文"]];
 /** 列表里的三种状态操作 */
 type ListAct = Extract<RateResult, "reset" | "master" | "remove">;
+/** 行上可撤销的批量操作：三种状态操作 + 从本词库删除（只有自建词库，需求 3.3.5） */
+type RowAct = ListAct | "delete";
+type Opt = { o: "cancel" | RowAct | "bookmark" | "know"; label: string; sub: string; cls: string };
 /** 拖拽操作按钮：顺序固定 取消 → 书签 → 重新记 → 加进度 → 已掌握 → 移出（需求 3.3.5），等宽铺满整行。
  *  书签挨着取消放：两个都是无损操作，最容易误碰的一头留给「移出」；
  *  中间三个按学习进度排：重新记（清零）→ 加进度（+1 次认识）→ 已掌握（到头），颜色也跟着状态色走 */
-const OPTS: Array<{ o: "cancel" | ListAct | "bookmark" | "know"; label: string; sub: string; cls: string }> = [
+const OPTS: Opt[] = [
   { o: "cancel", label: "取消", sub: "", cls: "cancel" }, { o: "bookmark", label: "书签", sub: "记住这里", cls: "bookmark" },
   { o: "reset", label: "重新记", sub: "按新词重背", cls: "reset" },
   { o: "know", label: "加进度", sub: "记一次认识", cls: "know" },
   { o: "master", label: "已掌握", sub: "不再出现", cls: "master" }, { o: "remove", label: "移出", sub: "不再学习", cls: "remove" },
 ];
+/** 自建词库在最右边多一个「删除」：比「移出」更重的操作，放在更远的一头 */
+const CUSTOM_OPTS: Opt[] = [...OPTS, { o: "delete", label: "删除", sub: "从词库删", cls: "delete" }];
 /** 操作先在本地生效，UNDO_MS 内可撤销，到时才提交服务端 */
 const UNDO_MS = 5000;
 /** 向下滚过这么多像素就在右下角显示「回到顶部」：一屏的三分之一左右，不会一动就跳出来 */
@@ -83,21 +89,23 @@ function windowFor(index: number) {
   return { cursor: startPage * PAGE, limit: Math.min(MAX_LIMIT, (page - startPage + 1) * PAGE) };
 }
 const ACT_PROGRESS: Record<ListAct, "new" | "mastered" | "removed"> = { reset: "new", master: "mastered", remove: "removed" };
-const actMessage = (act: ListAct, n: number) => n > 1
-  ? `已把 ${n} 个词${act === "reset" ? "重新记" : act === "master" ? "标记为已掌握" : "移出学习"}`
+const actMessage = (act: RowAct, n: number) => act === "delete" ? (n > 1 ? `已从本词库删除 ${n} 个词` : "已从本词库删除")
+  : n > 1 ? `已把 ${n} 个词${act === "reset" ? "重新记" : act === "master" ? "标记为已掌握" : "移出学习"}`
   : act === "master" ? "已标记为已掌握，不再出现在学习中" : act === "remove" ? "已移出学习，状态为未加入" : "已重新记：按新词重新开始";
 /**
- * 一批待定操作：三种状态操作走 rate-batch；「加进度」（know）一次只有一个词、走单词打分接口，
+ * 一批待定操作：三种状态操作走 rate-batch；「删除」走词库的删词接口；「加进度」（know）一次只有一个词、走单词打分接口，
  * clientTs 与预览时用的同一个，真正提交与预览对应得上，离线补交也不会记两次
  */
-type Pending = { ids: string[]; act: ListAct | "know"; clientTs?: string; rows: ListRow[]; data: ListResp | null; timer: ReturnType<typeof setTimeout> };
-/** 服务端 rate-batch 单次上限 500，超过要切片提交（审计 F053） */
+type Pending = { ids: string[]; act: RowAct | "know"; clientTs?: string; rows: ListRow[]; data: ListResp | null; timer: ReturnType<typeof setTimeout> };
+/** 服务端 rate-batch 与删词接口单次上限都是 500，超过要切片提交（审计 F053） */
 const BATCH_MAX = 500;
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 /** 提交一批待定操作要发的请求（提交队列与离开页面的 keepalive 共用）；带上词库 id，开了独立进度的词库写自己那套（需求 3.3.6） */
-const pendingRequests = (p: Pending, bookId: string): Array<{ url: string; body: unknown }> => p.act === "know"
-  ? [{ url: "/api/study/rate", body: { wordId: p.ids[0], result: "know", date: localToday(), source: "list", clientTs: p.clientTs, wordbookId: bookId } }]
-  : chunk(p.ids, BATCH_MAX).map((ids) => ({ url: "/api/study/rate-batch", body: { wordIds: ids, result: p.act, date: localToday(), wordbookId: bookId } }));
+const pendingRequests = (p: Pending, bookId: string): Array<{ url: string; method: "POST" | "DELETE"; body: unknown }> => p.act === "know"
+  ? [{ url: "/api/study/rate", method: "POST", body: { wordId: p.ids[0], result: "know", date: localToday(), source: "list", clientTs: p.clientTs, wordbookId: bookId } }]
+  : p.act === "delete"
+    ? chunk(p.ids, BATCH_MAX).map((ids) => ({ url: `/api/wordbooks/${bookId}/words`, method: "DELETE" as const, body: { wordIds: ids } }))
+    : chunk(p.ids, BATCH_MAX).map((ids) => ({ url: "/api/study/rate-batch", method: "POST" as const, body: { wordIds: ids, result: p.act, date: localToday(), wordbookId: bookId } }));
 
 /** 词库详情 / 单词列表（需求 3.3.5） */
 /**
@@ -174,13 +182,15 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
    */
   const commit = useCallback(async (p: Pending) => {
     try {
-      for (const { url, body } of pendingRequests(p, id)) {
-        const r = await api<{ duplicate?: boolean; skipped?: string | null }>(url, { method: "POST", json: body });
+      for (const { url, method, body } of pendingRequests(p, id)) {
+        const r = await api<{ duplicate?: boolean; skipped?: string | null }>(url, { method, json: body });
         if (p.act === "know" && (r.duplicate || r.skipped)) await refresh();
       }
       loadBook();
+      // 书签正指着删掉的词时服务端一并删了书签，这里跟着同步
+      if (p.act === "delete") loadBookmark();
     } catch (e) { toast(`操作没有保存：${(e as Error).message}`); await refresh(); }
-  }, [id, refresh, loadBook, toast]);
+  }, [id, refresh, loadBook, loadBookmark, toast]);
   /**
    * 把一批待定操作交给串行提交队列：不等网络返回就返回，调用方可以立刻接着操作。
    * 原来 doAct 里 await flush() 期间的新操作会被随后的赋值覆盖、永远提交不上去（审计 F051）。
@@ -271,7 +281,7 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
     const beacon = () => {
       const p = pending.current; if (!p) return;
       clearTimeout(p.timer); pending.current = null;
-      for (const { url, body } of pendingRequests(p, id)) fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "same-origin" }).catch(() => {});
+      for (const { url, method, body } of pendingRequests(p, id)) fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true, credentials: "same-origin" }).catch(() => {});
     };
     window.addEventListener("pagehide", beacon);
     return () => { window.removeEventListener("pagehide", beacon); beacon(); };
@@ -280,7 +290,8 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
   useEffect(() => onWordChanged(() => { refresh(); loadBook(); }), [refresh, loadBook]);
   useEffect(() => {
     if (!selectMode) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") exitSelect(); };
+    // 「加入词库」选择框开着时 Esc 只关选择框，别连多选一起退掉
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !document.querySelector(".modal-backdrop.open")) exitSelect(); };
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [selectMode]);
@@ -373,15 +384,31 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
     setRowsSync(next);
     if (cur) setDataSync({ ...cur, counts, total: cur.total - gone });
   }
+  /**
+   * 「删除」先在本地把这些行拿掉，各状态数量与总数跟着减。删掉的行都在已加载的区间里，
+   * 提交后服务端那边后面的词整体往前挪，翻页游标也要往前挪同样多，不然下一批会漏掉同样多个词
+   */
+  function applyDelete(ids: string[]) {
+    const set = new Set(ids); const cur = dataRef.current;
+    const counts = { ...(cur?.counts ?? {}) };
+    let gone = 0;
+    const next = rowsRef.current.filter((r) => {
+      if (!set.has(r.id)) return true;
+      counts[r.status] = Math.max(0, (counts[r.status] ?? 0) - 1); counts.all = Math.max(0, (counts.all ?? 0) - 1); gone++;
+      return false;
+    });
+    setRowsSync(next);
+    if (cur) setDataSync({ ...cur, counts, total: cur.total - gone, nextCursor: cur.nextCursor === null ? null : Math.max(0, cur.nextCursor - gone) });
+  }
   /** 滑动或批量操作：本地生效 + 可撤销的 toast，UNDO_MS 后提交 */
-  function doAct(ids: string[], act: ListAct) {
+  function doAct(ids: string[], act: RowAct) {
     if (!ids.length) return;
     // 上一批先入队（同步完成，不等网络），再建立这一批的快照
     const prev = pending.current;
     if (prev) { pending.current = null; enqueue(prev); }
     const snap: Pending = { ids, act, rows: rowsRef.current, data: dataRef.current, timer: setTimeout(() => { if (pending.current === snap) { pending.current = null; enqueue(snap); } }, UNDO_MS) };
     pending.current = snap;
-    applyLocal(ids, act);
+    if (act === "delete") applyDelete(ids); else applyLocal(ids, act);
     toast(actMessage(act, ids.length), { ms: UNDO_MS, action: { label: "撤销", onClick: () => undo(snap) } });
   }
   /**
@@ -439,8 +466,18 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
   function enterSelect(rowId: string) { setSelectMode(true); setSelected(new Set([rowId])); }
   function exitSelect() { setSelectMode(false); setSelected(new Set()); }
   function toggle(rowId: string) { setSelected((prev) => { const n = new Set(prev); if (n.has(rowId)) n.delete(rowId); else n.add(rowId); return n; }); }
-  function batch(act: ListAct) { const ids = rows.filter((r) => selected.has(r.id)).map((r) => r.id); exitSelect(); doAct(ids, act); }
+  function batch(act: RowAct) { const ids = rows.filter((r) => selected.has(r.id)).map((r) => r.id); exitSelect(); doAct(ids, act); }
   const vk = voiceKeyOf(settings.accent, settings.voice);
+  /** 自建词库才能删词：拖拽按钮条多一个「删除」，多选操作栏也多一个 */
+  const custom = book?.type === "custom";
+  /**
+   * 多选「加入词库」（需求 3.3.5）：选中的词按列表顺序加进别的自建词库，已经在那本里的跳过。
+   * 所有词库都有这一项——从内置词库挑词进自己的词库正是主要用法；正在看的这本不列在选择框里
+   */
+  const [collectIds, setCollectIds] = useState<string[] | null>(null);
+  const collectTarget = useMemo(() => (collectIds ? { wordIds: collectIds, exclude: id } : null), [collectIds, id]);
+  // 加进去过就退出多选（这批词处理完了）；没加就关掉选择框、留在多选里接着挑
+  const closeCollect = useCallback((added: boolean) => { setCollectIds(null); if (added) { setSelectMode(false); setSelected(new Set()); } }, []);
 
   return (
     <AppShell nav="books">
@@ -486,11 +523,11 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
         </div>
         {/* 一行操作提示；按钮的含义拖起来就能看到，这里只提醒有这两个手势 */}
         <div className="list-hint">
-          <span>横向拖动一行：书签 / 重新记 / 加进度 / 已掌握 / 移出；长按多选{mode !== "both" && "；点击单词或释义揭开遮罩并朗读，释义右边的空白到行尾都进详情"}</span>
+          <span>横向拖动一行：书签 / 重新记 / 加进度 / 已掌握 / 移出{custom && " / 删除"}；长按多选{mode !== "both" && "；点击单词或释义揭开遮罩并朗读，释义右边的空白到行尾都进详情"}</span>
         </div>
         <div className={`list edge dense mode-${mode}`}>
           {loadErr && !data ? <div className="empty">{loadErr}</div> : !data ? <div className="empty">加载中…</div> : rows.length === 0 ? <div className="empty"><div className="icon">🔍</div>没有匹配的单词</div> : rows.map((r) => (
-            <DragRow key={r.id} row={r} mode={mode} vk={vk} selectMode={selectMode} checked={selected.has(r.id)}
+            <DragRow key={r.id} row={r} opts={custom ? CUSTOM_OPTS : OPTS} mode={mode} vk={vk} selectMode={selectMode} checked={selected.has(r.id)}
               bookmarked={bm?.wordId === r.id} flash={flash === r.id}
               onOpen={() => router.push(`/word/${encodeURIComponent(r.spelling)}?book=${id}`, { scroll: false })} onAct={(a) => doAct([r.id], a)} onProgress={() => addProgress(r)}
               onBookmark={() => bookmarkRow(r)} onLongPress={() => enterSelect(r.id)} onToggle={() => toggle(r.id)} />
@@ -516,17 +553,21 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
                 <span className="sel-count">已选 {selected.size} 词</span>
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set(rows.map((r) => r.id)))}>全选</button>
                 <span className="small faint grow">点击行勾选 · 操作后几秒内可撤销</span>
+                <button type="button" className="btn btn-soft btn-sm sel-collect" disabled={!selected.size}
+                  onClick={() => setCollectIds(rows.filter((r) => selected.has(r.id)).map((r) => r.id))}><IconBookmark />加入词库</button>
               </div>
               <div className="row acts">
                 <button type="button" className="btn act-cancel" onClick={exitSelect}>取消</button>
                 <button type="button" className="btn act-reset" disabled={!selected.size} onClick={() => batch("reset")}>重新记</button>
                 <button type="button" className="btn act-master" disabled={!selected.size} onClick={() => batch("master")}>已掌握</button>
                 <button type="button" className="btn act-remove" disabled={!selected.size} onClick={() => batch("remove")}>移出</button>
+                {custom && <button type="button" className="btn act-delete" disabled={!selected.size} onClick={() => batch("delete")}>删除</button>}
               </div>
             </div>
           </div>
         )}
       </main>
+      <CollectModal target={collectTarget} onClose={closeCollect} />
       {/* 切换进度作用域前说清楚：两套记录都在，只是换一套来看、来记 */}
       <Modal open={scopeAsk} onClose={() => setScopeAsk(false)}>
         {book?.ownProgress ? (
@@ -551,7 +592,7 @@ const NO_DEF = "暂无释义";
 
 
 /** 单词行：进度饼图 + 小喇叭 + 拖拽操作（拖到行内按钮上松手，拖到别处松手就是取消）；长按进入多选，多选时点击行勾选 */
-function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen, onAct, onProgress, onBookmark, onLongPress, onToggle }: { row: ListRow; mode: ListMode; vk: VoiceKey; selectMode: boolean; checked: boolean; bookmarked: boolean; flash: boolean; onOpen: () => void; onAct: (a: ListAct) => void; onProgress: () => void; onBookmark: () => void; onLongPress: () => void; onToggle: () => void }) {
+function DragRow({ row, opts, mode, vk, selectMode, checked, bookmarked, flash, onOpen, onAct, onProgress, onBookmark, onLongPress, onToggle }: { row: ListRow; opts: Opt[]; mode: ListMode; vk: VoiceKey; selectMode: boolean; checked: boolean; bookmarked: boolean; flash: boolean; onOpen: () => void; onAct: (a: RowAct) => void; onProgress: () => void; onBookmark: () => void; onLongPress: () => void; onToggle: () => void }) {
   const contentRef = useRef<HTMLDivElement>(null);
   /** 行内的操作按钮条（一直有布局，不拖时只是看不见）：拖拽判定按每个按钮的真实位置量 */
   const optsRef = useRef<HTMLDivElement>(null);
@@ -593,7 +634,7 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
   /** 卡片上写什么：跟着显示模式走，别把遮住的那一半漏出来 */
   const chipText = mode === "zh" && !revealed ? (readableDef ?? row.display ?? row.spelling) : (row.display ?? row.spelling);
   /** 卡片正压着的按钮：卡片会挡住按钮上的字，所以把要执行的操作写在卡片上 */
-  const armed = pick === null ? null : OPTS[pick];
+  const armed = pick === null ? null : opts[pick];
   /** 揭开 / 收起遮罩：揭开时顺带读一遍这个词与释义（遮住的那一侧已可见，两种模式都可以带释义；revealed 还没生效，不走 speechDef()），收起不读 */
   const toggleReveal = () => {
     const next = !revealed;
@@ -650,7 +691,7 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
     if (!s || s.axis !== "x") return;
     suppress.current = true; setTimeout(() => { suppress.current = false; }, 60);
     const k = cancelled ? null : s.pick;
-    const opt = k === null ? null : OPTS[k];
+    const opt = k === null ? null : opts[k];
     setDropping(true);
     // 「取消」、拖到行外、没拖够距离：卡片飞回按下的位置，什么都不做
     if (k === null || !opt || opt.o === "cancel") {
@@ -663,12 +704,12 @@ function DragRow({ row, mode, vk, selectMode, checked, bookmarked, flash, onOpen
     if (b) setPt({ x: b.left + b.width / 2, y: b.top + b.height / 2 });
     setTimeout(() => {
       setPt(null); setPick(null); setDropping(false);
-      if (opt.o === "bookmark") onBookmark(); else if (opt.o === "know") onProgress(); else onAct(opt.o as ListAct);
+      if (opt.o === "bookmark") onBookmark(); else if (opt.o === "know") onProgress(); else onAct(opt.o as RowAct);
     }, DROP_MS);
   }
   return (
     <div className={"srow" + (pt ? " dragging" : "") + (selectMode ? " selecting" : "") + (masked ? " masked" : "") + (checked ? " checked" : "") + (revealed ? " revealed" : "") + (bookmarked ? " bookmarked" : "") + (flash ? " bm-flash" : "")} data-sp={row.spelling} data-id={row.id}>
-      <div className="s-opts" ref={optsRef} aria-hidden>{OPTS.map((o, i) => <div key={o.o} className={`s-opt ${o.cls}${pick === i ? " active" : ""}`}>{o.label}{o.sub && <small>{o.sub}</small>}</div>)}</div>
+      <div className="s-opts" ref={optsRef} aria-hidden>{opts.map((o, i) => <div key={o.o} className={`s-opt ${o.cls}${pick === i ? " active" : ""}`}>{o.label}{o.sub && <small>{o.sub}</small>}</div>)}</div>
       {/* 卡片挂到 body 上：留在行里会被列表的 overflow 裁掉，拖不出这一行 */}
       {pt && createPortal(
         <div className={"s-chip" + (armed ? ` on ${armed.cls}` : "") + (dropping ? " dropping" : "")}

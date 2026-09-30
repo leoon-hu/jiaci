@@ -634,6 +634,69 @@ export async function clearBookmark(userId: string, wordbookId: string) {
   await prisma.wordbookBookmark.deleteMany({ where: { userId, wordbookId } });
 }
 
+/** ---------- 自建词库增删词（需求 3.3.1 / 3.3.4 / 3.3.5） ---------- */
+
+/**
+ * 把一批词追加到词库末尾（手动添加、「加入我的词库」、单词列表多选批量加入共用，需求 3.3.4）：
+ * 已经在这本里的跳过（自动去重），其余按传入顺序排在最后；词数按实际插入条数累加——
+ * skipDuplicates 让并发的两次加词不撞唯一键、word_count 不漂移（审计 F015）。
+ * 返回新加的与本来就有的词 id；不在 word 表里的 id 两边都不算。调用方先确认词库是本人的自建词库
+ */
+export async function appendToWordbook(wordbookId: string, wordIds: string[]) {
+  const ids = [...new Set(wordIds)];
+  const [known, members] = await Promise.all([
+    prisma.word.findMany({ where: { id: { in: ids } }, select: { id: true } }),
+    prisma.wordbookWord.findMany({ where: { wordbookId, wordId: { in: ids } }, select: { wordId: true } }),
+  ]);
+  const exists = new Set(known.map((k) => k.id));
+  const inBook = new Set(members.map((m) => m.wordId));
+  const fresh = ids.filter((w) => exists.has(w) && !inBook.has(w));
+  if (fresh.length) {
+    const last = await prisma.wordbookWord.aggregate({ where: { wordbookId }, _max: { sortOrder: true } });
+    const base = (last._max.sortOrder ?? -1) + 1;
+    await prisma.$transaction(async (tx) => {
+      const r = await tx.wordbookWord.createMany({ data: fresh.map((wordId, k) => ({ wordbookId, wordId, sortOrder: base + k })), skipDuplicates: true });
+      if (r.count) await tx.wordbook.update({ where: { id: wordbookId }, data: { wordCount: { increment: r.count } } });
+    });
+  }
+  return { added: fresh, existed: ids.filter((w) => inBook.has(w)) };
+}
+
+/**
+ * 这批词里只在这本词库出现的（用户自己的其它词库与内置词库都不含）：删掉这本词库、或把词从这本里删掉时，
+ * 这些词的个人记录跟着清掉；还在别的词库里的词记录保留，以免删一本词库连带清空内置词库的进度
+ */
+export async function wordsOnlyIn(userId: string, wordbookId: string, wordIds: string[]): Promise<string[]> {
+  if (!wordIds.length) return [];
+  const elsewhere = await prisma.wordbookWord.findMany({ where: { wordId: { in: wordIds }, wordbookId: { not: wordbookId }, wordbook: { OR: [{ type: "builtin" }, { ownerId: userId }] } }, select: { wordId: true } });
+  const keep = new Set(elsewhere.map((e) => e.wordId));
+  return wordIds.filter((w) => !keep.has(w));
+}
+
+/**
+ * 从自建词库删掉一批词（需求 3.3.5）：去掉成员、词数按实际删掉的条数减；
+ * 只在这本里的词清掉个人记录（进度、备注、学习记录，与删除整本词库同一条规则），
+ * 这本的独立进度（scope = 词库 id）里这些词的进度与学习记录也删掉——作用域列没有外键，不删会留着孤儿行、
+ * 到期复习还会把它们排进这本的队列；书签正指着其中一个词的话一并删掉。调用方先确认词库是本人的自建词库
+ */
+export async function removeFromWordbook(userId: string, wordbookId: string, wordIds: string[]) {
+  const members = await prisma.wordbookWord.findMany({ where: { wordbookId, wordId: { in: wordIds } }, select: { wordId: true } });
+  const ids = members.map((m) => m.wordId);
+  if (!ids.length) return { removed: 0, clearedWords: 0 };
+  const onlyHere = await wordsOnlyIn(userId, wordbookId, ids);
+  const mine = { userId, OR: [{ wordId: { in: onlyHere } }, { scope: wordbookId, wordId: { in: ids } }] };
+  return prisma.$transaction(async (tx) => {
+    // 并发的两次删除都查到了同一批成员：按实际删掉的条数减词数，不会减过头（同审计 F015 的加词）
+    const r = await tx.wordbookWord.deleteMany({ where: { wordbookId, wordId: { in: ids } } });
+    if (r.count) await tx.wordbook.update({ where: { id: wordbookId }, data: { wordCount: { decrement: r.count } } });
+    await tx.userWordProgress.deleteMany({ where: mine });
+    await tx.userWordNote.deleteMany({ where: { userId, wordId: { in: onlyHere } } });
+    await tx.studyLog.deleteMany({ where: mine });
+    await tx.wordbookBookmark.deleteMany({ where: { wordbookId, wordId: { in: ids } } });
+    return { removed: r.count, clearedWords: onlyHere.length };
+  });
+}
+
 export const wordbookInclude = Prisma.validator<Prisma.WordbookDefaultArgs>()({ select: { id: true, name: true, type: true, wordCount: true, createdAt: true } });
 
 /** 导出：词库、进度、备注、日志 */

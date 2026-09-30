@@ -4,15 +4,17 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/client/api";
 import { speakWord, voiceKeyOf } from "@/lib/client/speech";
 import { STATUS_LABEL, type WordStatus } from "@/lib/status";
-import { IconSpeaker, IconX } from "./Icons";
+import { IconBookmark, IconSpeaker, IconX } from "./Icons";
 
 type Peek = { spelling: string; display?: string | null; status: WordStatus; phonetic: { us: string; uk: string } | null; core: string | null; meanings: Array<{ pos: string; defs: string[] }>; stopword?: boolean };
 
 /**
  * 点击单词后页面下部弹出的小框：发音 + 核心义 + 释义，点击进入详情（需求 3.2.5）。
- * `book` = 所在详情按哪本词库的进度算：状态按同一本查、进详情也带过去，免得同一个词在小框里和详情里两个状态
+ * `book` = 所在详情按哪本词库的进度算：状态按同一本查、进详情也带过去，免得同一个词在小框里和详情里两个状态。
+ * `onCollect` = 底部「加入我的词库」（3.3.4），传的是查到的原形；选择框由调用方画在小框外面——
+ * 画在里面的话，点选择框会被「点别处收起小框」的监听当成点了外面，连选择框一起卸掉
  */
-export default function WordPeek({ word, book, accent, voice = "female", onClose, autoSpeak = true }: { word: string | null; book?: string | null; accent: "us" | "uk"; voice?: "female" | "male"; onClose: () => void; autoSpeak?: boolean }) {
+export default function WordPeek({ word, book, accent, voice = "female", onClose, onCollect, autoSpeak = true }: { word: string | null; book?: string | null; accent: "us" | "uk"; voice?: "female" | "male"; onClose: () => void; onCollect?: (spelling: string) => void; autoSpeak?: boolean }) {
   const vk = voiceKeyOf(accent, voice);
   const [data, setData] = useState<Peek | null>(null);
   const [loading, setLoading] = useState(false);
@@ -56,7 +58,13 @@ export default function WordPeek({ word, book, accent, voice = "female", onClose
           </>
         )}
       </div>
-      <div className="peek-foot"><span>点击小框进入单词详情</span><span className="go">查看详情 ›</span></div>
+      <div className="peek-foot">
+        {/* 查到了、不是功能词、有资料才能加词库（「暂无资料」的词加进去只是一行空白）；没查完之前不知道原形，先显示提示 */}
+        {onCollect && data && !data.stopword && (data.core || data.meanings.length > 0 || data.phonetic)
+          ? <button type="button" className="btn btn-soft btn-sm peek-collect" onClick={(e) => { e.stopPropagation(); onCollect(data.spelling); }}><IconBookmark />加入我的词库</button>
+          : <span>点击小框进入单词详情</span>}
+        <span className="go">查看详情 ›</span>
+      </div>
     </div>
   );
 }

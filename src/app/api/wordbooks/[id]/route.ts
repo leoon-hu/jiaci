@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withUser, ok, readJson, ApiError, type Params } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { getCurrentWordbookId, ownProgressOf, wordbookProgress } from "@/lib/study";
+import { getCurrentWordbookId, ownProgressOf, wordbookProgress, wordsOnlyIn } from "@/lib/study";
 
 async function ownedOrBuiltin(userId: string, id: string) {
   const book = await prisma.wordbook.findFirst({ where: { id, OR: [{ type: "builtin" }, { ownerId: userId }] } });
@@ -38,11 +38,8 @@ export const DELETE = withUser(async (_req, ctx: Params<{ id: string }>, user) =
   const book = await prisma.wordbook.findFirst({ where: { id, ownerId: user.id } });
   if (!book) throw new ApiError(404, "词库不存在或不可删除");
   const members = await prisma.wordbookWord.findMany({ where: { wordbookId: id }, select: { wordId: true } });
-  const ids = members.map((m) => m.wordId);
   // 只在本词库出现（用户其它词库与内置词库都不含）的词，清理其个人记录
-  const elsewhere = await prisma.wordbookWord.findMany({ where: { wordId: { in: ids }, wordbookId: { not: id }, wordbook: { OR: [{ type: "builtin" }, { ownerId: user.id }] } }, select: { wordId: true } });
-  const keep = new Set(elsewhere.map((e) => e.wordId));
-  const onlyHere = ids.filter((w) => !keep.has(w));
+  const onlyHere = await wordsOnlyIn(user.id, id, members.map((m) => m.wordId));
   await prisma.$transaction([
     prisma.userWordProgress.deleteMany({ where: { userId: user.id, OR: [{ wordId: { in: onlyHere } }, { scope: id }] } }),
     prisma.userWordNote.deleteMany({ where: { userId: user.id, wordId: { in: onlyHere } } }),

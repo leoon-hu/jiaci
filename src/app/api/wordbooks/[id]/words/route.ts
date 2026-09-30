@@ -1,13 +1,16 @@
 import { z } from "zod";
 import { withUser, ok, readJson, ApiError, type Params } from "@/lib/api";
 import { prisma } from "@/lib/db";
-import { listWordbookWords } from "@/lib/study";
+import { appendToWordbook, listWordbookWords, removeFromWordbook } from "@/lib/study";
 import { splitManualInput, MAX_WORD_LEN } from "@/lib/words";
 import { lookupDictFields } from "@/lib/dict-db";
 import { wordCreateData } from "@/lib/dict";
 
 /** 手动添加一次最多接受的词条数：再多请走「导入单词本」（审计 F013） */
 const MAX_MANUAL_WORDS = 200;
+/** 按词 id 批量加 / 删一次最多几个：与 rate-batch 一样 500，列表页多了会切片提交 */
+const MAX_BATCH_WORDS = 500;
+const WordIds = z.array(z.string().min(1).max(40)).min(1).max(MAX_BATCH_WORDS);
 
 /** 分页参数：负数会让 slice 取到尾部、nextCursor 递减成负数翻不完（审计 F021） */
 const Query = z.object({
@@ -34,15 +37,18 @@ export const GET = withUser(async (req, ctx: Params<{ id: string }>, user) => {
 });
 
 /**
- * 手动添加（3.3.4）：单个或批量；新词只带词典字段，不触发 AI。
+ * 向自建词库加词（3.3.4），两种请求体：
+ * - `{ input }` 手动添加：单个或批量输入拼写；新词只带词典字段，不触发 AI；返回 added / existed / bad 三组拼写；
+ * - `{ wordIds }` 单词列表多选「加入词库」：按列表顺序追加，已经在这本里的跳过（自动去重）；返回 added / existed 两组词 id。
  * 批量建词 + 批量加成员，词数在一个事务里按实际插入条数累加，中途失败不会让 word_count 漂移（审计 F013 / F015）。
  */
 export const POST = withUser(async (req, ctx: Params<{ id: string }>, user) => {
   const { id } = await ctx.params;
   const book = await prisma.wordbook.findFirst({ where: { id, ownerId: user.id, type: "custom" } });
   if (!book) throw new ApiError(404, "只能向自己创建的词库添加单词");
-  const { input } = z.object({ input: z.string().min(1).max(20_000) }).parse(await readJson(req));
-  const { words, bad } = splitManualInput(input);
+  const body = z.union([z.object({ input: z.string().min(1).max(20_000) }), z.object({ wordIds: WordIds })]).parse(await readJson(req));
+  if ("wordIds" in body) return ok(await appendToWordbook(id, body.wordIds));
+  const { words, bad } = splitManualInput(body.input);
   if (!words.length) throw new ApiError(400, "请输入英文单词或短语");
   if (words.length > MAX_MANUAL_WORDS) throw new ApiError(400, `一次最多添加 ${MAX_MANUAL_WORDS} 个词条，更多请用「导入单词本」`);
 
@@ -50,16 +56,20 @@ export const POST = withUser(async (req, ctx: Params<{ id: string }>, user) => {
   await prisma.word.createMany({ data: words.map((s) => wordCreateData(s, dict.get(s))), skipDuplicates: true });
   const rows = await prisma.word.findMany({ where: { spelling: { in: words } }, select: { id: true, spelling: true } });
   const idOf = new Map(rows.map((r) => [r.spelling, r.id]));
-  const members = new Set((await prisma.wordbookWord.findMany({ where: { wordbookId: id, wordId: { in: rows.map((r) => r.id) } }, select: { wordId: true } })).map((m) => m.wordId));
-  const added = words.filter((s) => idOf.has(s) && !members.has(idOf.get(s)!));
-  const existed = words.filter((s) => idOf.has(s) && members.has(idOf.get(s)!));
-  if (added.length) {
-    const last = await prisma.wordbookWord.aggregate({ where: { wordbookId: id }, _max: { sortOrder: true } });
-    const base = (last._max.sortOrder ?? -1) + 1;
-    await prisma.$transaction(async (tx) => {
-      const r = await tx.wordbookWord.createMany({ data: added.map((s, k) => ({ wordbookId: id, wordId: idOf.get(s)!, sortOrder: base + k })), skipDuplicates: true });
-      if (r.count) await tx.wordbook.update({ where: { id }, data: { wordCount: { increment: r.count } } });
-    });
-  }
-  return ok({ added, existed, bad });
+  const r = await appendToWordbook(id, words.filter((s) => idOf.has(s)).map((s) => idOf.get(s)!));
+  const added = new Set(r.added);
+  const existed = new Set(r.existed);
+  return ok({ added: words.filter((s) => added.has(idOf.get(s)!)), existed: words.filter((s) => existed.has(idOf.get(s)!)), bad });
+});
+
+/**
+ * 从自建词库删除单词（需求 3.3.5）：单词列表的拖拽「删除」与多选「删除」，本地 5 秒撤销期过了才发到这里。
+ * 只在这本里的词连个人记录一起删，规则与删除整本词库相同（见 removeFromWordbook）
+ */
+export const DELETE = withUser(async (req, ctx: Params<{ id: string }>, user) => {
+  const { id } = await ctx.params;
+  const book = await prisma.wordbook.findFirst({ where: { id, ownerId: user.id, type: "custom" } });
+  if (!book) throw new ApiError(404, "只能从自己创建的词库删除单词");
+  const { wordIds } = z.object({ wordIds: WordIds }).parse(await readJson(req));
+  return ok(await removeFromWordbook(user.id, id, [...new Set(wordIds)]));
 });
