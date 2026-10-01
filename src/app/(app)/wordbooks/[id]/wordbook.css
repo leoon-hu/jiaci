@@ -125,14 +125,19 @@
 .srow.selecting .s-content{cursor:default}
 .sel-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--card);border-top:1px solid var(--border);padding:8px 12px calc(10px + env(safe-area-inset-bottom));box-shadow:0 -6px 20px rgba(16,24,40,.08);animation:pop .2s ease-out}
 .sel-bar .inner{max-width:960px;margin:0 auto;display:flex;flex-direction:column;gap:8px}
-.sel-bar .row{display:flex;gap:8px;align-items:center}
+/* 两行借用了列表行的 .row（上下内边距与分隔线保留），左右 16px 内边距去掉：操作栏自己已经留了边，再缩进一层，窄屏上按钮就放不下 */
+.sel-bar .row{display:flex;gap:8px;align-items:center;padding-left:0;padding-right:0}
 .sel-bar .sel-count{font-weight:700;font-size:14px;white-space:nowrap}
 .sel-bar .row .grow{text-align:right}
 /* 多选「加入词库」：不改学习状态，和下面一排彩色的状态操作分开放在第一行右边；手机上提示文字隐藏，靠 margin 推到最右 */
 .sel-bar .sel-collect{flex:none;margin-left:auto}
 .sel-bar .sel-collect svg{width:16px;height:16px}
-.sel-bar .acts .btn{flex:1;color:#fff;font-weight:700;min-height:42px}
-.sel-bar .act-cancel{background:var(--bg);color:var(--text);border-color:var(--border-strong);flex:0 0 auto;padding:0 16px}
+/* 操作按钮等分一排：.btn 默认左右各 18px 内边距、不换行，最小宽度是「文字 + 36px」，自建词库五个按钮（多了「删除」）
+   在 390px 宽的手机上就挤出屏幕。允许收窄到比内容还窄（min-width:0）、内边距收小；「取消」只占自己需要的宽度，
+   省下的给另外几个；窄屏再收紧间距、字小一号——三个字的按钮在 320px 宽时也不贴边 */
+.sel-bar .acts .btn{flex:1 1 0;min-width:0;padding:0 6px;color:#fff;font-weight:700;min-height:42px}
+.sel-bar .acts .act-cancel{flex:0 0 auto;padding:0 14px;background:var(--bg);color:var(--text);border-color:var(--border-strong)}
+@media (max-width:400px){.sel-bar .acts{gap:6px}.sel-bar .acts .btn{font-size:14px}.sel-bar .acts .act-cancel{padding:0 10px}}
 .sel-bar .act-reset{background:var(--st-red)}
 .sel-bar .act-master{background:var(--st-green)}
 .sel-bar .act-remove{background:#475569}
