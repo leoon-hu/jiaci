@@ -25,6 +25,8 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   "study.master_interval": "60",
   "study.fsrs_params": "",
   "import.max_words": "5000",
+  // 每个用户最多几本自己的词库（导入的与自建的合计，需求 3.3.1）；已经超过的不动，只是不能再建
+  "wordbook.max_per_user": "3",
   // 发音音频：合成引擎、四种声音的音色名、语速、并发、批量预生成例句用的声音
   "tts.provider": "edge",
   "tts.voice_us_female": "en-US-AriaNeural",

@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { emitWordChanged } from "@/lib/client/word-events";
+import { quotaFull, quotaFullMessage, type BookQuota } from "@/lib/wordbook-quota";
 import Modal from "./Modal";
 import { IconCheck } from "./Icons";
 import { useToast } from "./Toast";
@@ -20,12 +21,14 @@ const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length
 /**
  * 「加入我的词库」选择框（需求 3.3.4 / 3.3.5）：单词详情操作区、点词小框、单词列表多选共用。
  * 列出自建词库，点「加入」立即加进去、框不关，可以接着加到别的词库；
- * 下面一行当场新建一本并把词加进去——从学习页的点词小框跳去「新建词库」页会打断这一轮学习。
+ * 下面一行当场新建一本并把词加进去——从学习页的点词小框跳去「新建词库」页会打断这一轮学习；
+ * 「我的词库」满了（导入 + 自建合计，3.3.1）就不显示这一行，只说一句为什么。
  * `target` 为 null 时不显示；`onClose(added)` 告诉调用方这次有没有加进去过，要是稳定的引用（加载失败时也会调用）
  */
 export default function CollectModal({ target, onClose }: { target: CollectTarget | null; onClose: (added: boolean) => void }) {
   const { toast } = useToast();
   const [books, setBooks] = useState<Book[] | null>(null);
+  const [quota, setQuota] = useState<BookQuota | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const addedAny = useRef(false);
@@ -35,15 +38,18 @@ export default function CollectModal({ target, onClose }: { target: CollectTarge
     if (!target) return;
     let alive = true;
     addedAny.current = false;
-    setBooks(null); setName("");
+    setBooks(null); setQuota(null); setName("");
     const load = "spelling" in target
-      ? api<{ wordbooks: Book[] }>(`/api/words/${encodeURIComponent(target.spelling)}/collect`).then((r) => r.wordbooks)
+      ? api<{ wordbooks: Book[]; quota: BookQuota }>(`/api/words/${encodeURIComponent(target.spelling)}/collect`)
       // 一批词不标「已加入」（多半是有的在、有的不在），只列出正在看的这本以外的自建词库，新建的在前
-      : api<{ wordbooks: Array<{ id: string; name: string; type: string; wordCount: number; createdAt: string }> }>("/api/wordbooks").then((r) => r.wordbooks
-        .filter((b) => b.type === "custom" && b.id !== target.exclude)
-        .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-        .map((b) => ({ id: b.id, name: b.name, wordCount: b.wordCount, has: false })));
-    load.then((bs) => { if (alive) setBooks(bs); })
+      : api<{ wordbooks: Array<{ id: string; name: string; type: string; wordCount: number; createdAt: string }>; quota: BookQuota }>("/api/wordbooks").then((r) => ({
+        quota: r.quota,
+        wordbooks: r.wordbooks
+          .filter((b) => b.type === "custom" && b.id !== target.exclude)
+          .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+          .map((b) => ({ id: b.id, name: b.name, wordCount: b.wordCount, has: false })),
+      }));
+    load.then((r) => { if (alive) { setBooks(r.wordbooks); setQuota(r.quota); } })
       .catch((e) => { if (alive) { onClose(false); toast((e as Error).message); } });
     return () => { alive = false; };
   }, [target, onClose, toast]);
@@ -83,12 +89,14 @@ export default function CollectModal({ target, onClose }: { target: CollectTarge
       const b = await api<{ id: string; name: string }>("/api/wordbooks", { method: "POST", json: { name: v } });
       // 新建的排最前（按创建时间倒序），先放进列表再加词，加词失败也能看到它、再点「加入」
       setBooks((bs) => [{ id: b.id, name: b.name, wordCount: 0, has: false }, ...(bs ?? [])]);
+      setQuota((q) => q && { ...q, used: q.used + 1 });
       setName("");
       await addTo(b);
     } catch (e) { toast((e as Error).message); } finally { setBusy(false); }
   }
 
   const n = target && "wordIds" in target ? target.wordIds.length : 0;
+  const full = quotaFull(quota);
   return (
     <Modal open={!!target} onClose={close}>
       <h3>加入我的词库</h3>
@@ -103,12 +111,14 @@ export default function CollectModal({ target, onClose }: { target: CollectTarge
                   : <button type="button" className="btn btn-soft btn-sm" disabled={busy} onClick={() => join(b)}>加入</button>}
               </div>
             ))}</div>
-          ) : <p className="muted small">{n ? "你还没有别的自建词库" : "你还没有自建词库"}，起个名字新建一本，{n ? "选中的词" : "这个词"}就放进去。</p>}
-          <div className="collect-new">
-            <input className="input" placeholder={books.length ? "或者新建一本词库" : "词库名称，例如：我的生词"} maxLength={30} value={name}
-              onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") create(); }} aria-label="新词库名称" />
-            <button type="button" className="btn btn-secondary" disabled={!name.trim() || busy} onClick={create}>新建并加入</button>
-          </div>
+          ) : <p className="muted small">{n ? "你还没有别的自建词库" : "你还没有自建词库"}{full ? "。" : `，起个名字新建一本，${n ? "选中的词" : "这个词"}就放进去。`}</p>}
+          {full && quota ? <p className="muted small collect-full">{quotaFullMessage(quota.max)}。</p> : (
+            <div className="collect-new">
+              <input className="input" placeholder={books.length ? "或者新建一本词库" : "词库名称，例如：我的生词"} maxLength={30} value={name}
+                onChange={(e) => setName(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") create(); }} aria-label="新词库名称" />
+              <button type="button" className="btn btn-secondary" disabled={!name.trim() || busy} onClick={create}>新建并加入</button>
+            </div>
+          )}
         </>
       )}
       <div className="actions"><button type="button" className="btn btn-secondary" onClick={close}>完成</button></div>

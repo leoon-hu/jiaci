@@ -30,3 +30,6 @@
   .book-row .ops{width:100%;padding-left:58px;margin-top:-2px}
   .book-row .ops .btn:first-child{flex:1}
 }
+/* 「我的词库」满了（3.3.1）：入口按钮看着是灰的，点了提示原因、不跳转 */
+.page-head .btn[aria-disabled="true"]{opacity:.5;cursor:not-allowed}
+.quota-hint.full{color:var(--warn)}

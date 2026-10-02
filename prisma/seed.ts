@@ -27,6 +27,7 @@ const CONFIG: Array<[string, string, string]> = [
   ["study.master_interval", "60", "安排的复习间隔达到多少天即自动转为已掌握"],
   ["study.fsrs_params", "", "FSRS 个性化权重（JSON 数组，官方优化器拟合后填入）；空 = 用算法默认参数"],
   ["import.max_words", "5000", "单次导入词数上限"],
+  ["wordbook.max_per_user", "3", "每个用户最多几本自己的词库（导入的与自建的合计）；已经超过的不动，只是不能再建"],
   ["tts.provider", "edge", "发音合成引擎：edge（Edge-TTS，免费）/ kokoro（自托管，需环境变量 KOKORO_BASE_URL）"],
   ["tts.voice_us_female", "en-US-AriaNeural", "美音女声音色（Edge）"],
   ["tts.voice_us_male", "en-US-GuyNeural", "美音男声音色（Edge）"],

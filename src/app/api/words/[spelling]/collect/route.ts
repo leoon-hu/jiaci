@@ -3,7 +3,7 @@ import { withUser, ok, readJson, ApiError, type Params, safeDecode } from "@/lib
 import { prisma } from "@/lib/db";
 import { getOrCreateWord } from "@/lib/dict-db";
 import { isValidWord, normalizeWord } from "@/lib/words";
-import { appendToWordbook } from "@/lib/study";
+import { appendToWordbook, ownBookQuota } from "@/lib/study";
 
 async function spellingOf(ctx: Params<{ spelling: string }>) {
   const spelling = normalizeWord(safeDecode((await ctx.params).spelling));
@@ -13,18 +13,20 @@ async function spellingOf(ctx: Params<{ spelling: string }>) {
 
 /**
  * 「加入我的词库」的选择框（3.3.4）：自己的自建词库，按创建时间倒序（与词库列表「我的词库」一致），
- * 每本标出是不是已经有这个词。只查不建：词表里还没有这个词就是哪本都没有
+ * 每本标出是不是已经有这个词。只查不建：词表里还没有这个词就是哪本都没有。
+ * `quota`：「我的词库」满了（3.3.1）选择框就不显示「新建并加入」那一行
  */
 export const GET = withUser(async (_req, ctx: Params<{ spelling: string }>, user) => {
   const spelling = await spellingOf(ctx);
-  const [books, word] = await Promise.all([
+  const [books, word, quota] = await Promise.all([
     prisma.wordbook.findMany({ where: { ownerId: user.id, type: "custom" }, orderBy: { createdAt: "desc" }, select: { id: true, name: true, wordCount: true } }),
     prisma.word.findUnique({ where: { spelling }, select: { id: true } }),
+    ownBookQuota(user.id),
   ]);
   const has = new Set(word && books.length
     ? (await prisma.wordbookWord.findMany({ where: { wordId: word.id, wordbookId: { in: books.map((b) => b.id) } }, select: { wordbookId: true } })).map((m) => m.wordbookId)
     : []);
-  return ok({ spelling, wordbooks: books.map((b) => ({ ...b, has: has.has(b.id) })) });
+  return ok({ spelling, wordbooks: books.map((b) => ({ ...b, has: has.has(b.id) })), quota });
 });
 
 /** 加入我的词库（3.3.4） */

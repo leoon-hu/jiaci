@@ -335,6 +335,7 @@ button.row{width:100%;border:0;border-top:1px solid var(--border);background:non
 .collect-new{display:flex;gap:8px;margin-top:12px}
 .collect-new .input{flex:1;min-width:0}
 .collect-new .btn{flex:none}
+.collect-full{margin:12px 0 0}
 /* 「分享给朋友」弹窗里的那段话：可以选中复制 */
 .share-message{margin:12px 0 0;padding:12px 14px;border:1px solid var(--border);border-radius:12px;background:var(--bg);font:inherit;font-size:14px;line-height:1.5;white-space:pre-wrap;word-break:break-all;user-select:text}
 @keyframes pop{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}

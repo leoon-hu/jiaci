@@ -10,6 +10,7 @@ import { deriveStatus, pieProgress, type WordStatus } from "./status";
 import { fromDate, toDate } from "./dates";
 import { getSettings } from "./settings";
 import { RUN_MAX_EXAMPLES } from "./run-plan";
+import { quotaFull, quotaFullMessage, type BookQuota } from "./wordbook-quota";
 
 /** ---------- 通用查询 ---------- */
 
@@ -632,6 +633,30 @@ export async function setBookmark(userId: string, wordbookId: string, wordId: st
 
 export async function clearBookmark(userId: string, wordbookId: string) {
   await prisma.wordbookBookmark.deleteMany({ where: { userId, wordbookId } });
+}
+
+/** ---------- 「我的词库」本数上限（需求 3.3.1） ---------- */
+
+/** 自己有几本词库（导入 + 自建，内置的不算）、最多几本 */
+export async function ownBookQuota(userId: string, db: Prisma.TransactionClient = prisma): Promise<BookQuota> {
+  const [used, max] = await Promise.all([db.wordbook.count({ where: { ownerId: userId } }), getConfigInt("wordbook.max_per_user")]);
+  return { used, max };
+}
+
+/** 满了抛 409；导入在建词条之前先查一次，免得白建一堆词条才发现建不了词库 */
+export async function assertOwnBookRoom(userId: string, db: Prisma.TransactionClient = prisma) {
+  const q = await ownBookQuota(userId, db);
+  if (quotaFull(q)) throw new ApiError(409, quotaFullMessage(q.max), "wordbook_limit");
+}
+
+/**
+ * 新建一本自己的词库（新建词库页、选择框里的「新建并加入」、导入共用），在事务里调：
+ * 先按用户拿咨询锁再数本数——同一个用户并发的两次新建排队进来，不会都看到「还差一本」一起建成
+ */
+export async function createOwnWordbook(tx: Prisma.TransactionClient, userId: string, data: { name: string; type: "custom" | "import"; wordCount?: number }) {
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`wordbook-quota:${userId}`}))`;
+  await assertOwnBookRoom(userId, tx);
+  return tx.wordbook.create({ data: { ...data, ownerId: userId } });
 }
 
 /** ---------- 自建词库增删词（需求 3.3.1 / 3.3.4 / 3.3.5） ---------- */

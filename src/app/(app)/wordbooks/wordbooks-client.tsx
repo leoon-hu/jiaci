@@ -11,6 +11,7 @@ import { useToast } from "@/components/Toast";
 import { api } from "@/lib/client/api";
 import { useMe } from "@/lib/client/useMe";
 import { STATUS_LABEL, type WordStatus } from "@/lib/status";
+import { quotaFull, quotaFullMessage, quotaHint } from "@/lib/wordbook-quota";
 import "./wordbooks.css";
 
 type Book = { id: string; name: string; type: "builtin" | "import" | "custom"; wordCount: number; learned: number; mastered: number; removed: number; isCurrent: boolean; createdAt: string; ownProgress: boolean };
@@ -31,20 +32,26 @@ const tabKey = (userId: string) => `aiword.wordbooks.tab.${userId}`;
 /**
  * 词库列表（需求 3.3.1）：三个 Tab——正在学习 / 我的词库（导入 + 自建）/ 内置词库，点击或左右滑动切换。
  * 列表由 page.tsx 在服务端查好传进来，首屏直接有内容（性能优化 P1-1）；之后的切换、删除仍走接口刷新。
+ * 「我的词库」有本数上限（导入 + 自建合计，3.3.1）：满了点「导入单词本」「+ 新建词库」只提示、不跳转。
  */
-export default function WordbooksClient({ initial }: { initial: Book[] }) {
+export default function WordbooksClient({ initial, maxOwn: initialMax }: { initial: Book[]; maxOwn: number }) {
   const router = useRouter();
   const { toast } = useToast();
   const { me } = useMe();
   const [books, setBooks] = useState<Book[] | null>(initial);
   const [del, setDel] = useState<Book | null>(null);
+  const [maxOwn, setMaxOwn] = useState(initialMax);
   const [tab, setTabState] = useState(0);
   const picked = useRef(false);
-  const load = useCallback(() => api<{ wordbooks: Book[] }>("/api/wordbooks").then((r) => setBooks(r.wordbooks)).catch((e) => toast((e as Error).message)), [toast]);
+  const load = useCallback(() => api<{ wordbooks: Book[]; quota: { max: number } }>("/api/wordbooks").then((r) => { setBooks(r.wordbooks); setMaxOwn(r.quota.max); }).catch((e) => toast((e as Error).message)), [toast]);
 
   const current = books?.find((b) => b.isCurrent) ?? null;
   const mine = (books ?? []).filter((b) => b.type !== "builtin").sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const builtin = (books ?? []).filter((b) => b.type === "builtin");
+  const quota = { used: mine.length, max: maxOwn };
+  const full = quotaFull(quota);
+  /** 满了：入口按钮还在（看得到、点了说清楚为什么不行），只是不跳转 */
+  const guard = (e: React.MouseEvent) => { if (full) { e.preventDefault(); toast(quotaFullMessage(maxOwn)); } };
 
   // 首次进入：按上次停留的 Tab；没有记录时，有当前词库停在「正在学习」，否则有自己的词库停在「我的词库」，再否则「内置词库」
   useEffect(() => {
@@ -93,7 +100,7 @@ export default function WordbooksClient({ initial }: { initial: Book[] }) {
       <main className="page medium">
         <div className="page-head">
           <div><h1 className="page-title">词库</h1><p className="page-sub">同一时间只能学习一个词库，切换后进度仍会保留</p></div>
-          <div className="btn-row"><Link className="btn btn-secondary" href="/import">导入单词本</Link><Link className="btn btn-primary" href="/wordbooks/new">+ 新建词库</Link></div>
+          <div className="btn-row"><Link className="btn btn-secondary" href="/import" aria-disabled={full} onClick={guard}>导入单词本</Link><Link className="btn btn-primary" href="/wordbooks/new" aria-disabled={full} onClick={guard}>+ 新建词库</Link></div>
         </div>
         {!books ? <p className="muted">加载中…</p> : (
           <div className="books-tabs">
@@ -112,7 +119,12 @@ export default function WordbooksClient({ initial }: { initial: Book[] }) {
                 )}
               </div>
               <div className="books-panel">
-                {mine.length ? <div className="list edge">{mine.map((b) => renderRow(b, true))}</div> : <div className="books-empty"><p>还没有导入或创建的词库</p><p className="small faint">用上面的「导入单词本」或「+ 新建词库」添加</p></div>}
+                {mine.length ? (
+                  <>
+                    <div className="list edge">{mine.map((b) => renderRow(b, true))}</div>
+                    <p className={"small mt-8 quota-hint" + (full ? " full" : " faint")}>{quotaHint(quota)}</p>
+                  </>
+                ) : <div className="books-empty"><p>还没有导入或创建的词库</p><p className="small faint">用上面的「导入单词本」或「+ 新建词库」添加，最多 {maxOwn} 本</p></div>}
               </div>
               <div className="books-panel">
                 {builtin.length ? <div className="list edge">{builtin.map((b) => renderRow(b, false))}</div> : <div className="books-empty"><p className="faint">运营方尚未添加内置词库</p></div>}

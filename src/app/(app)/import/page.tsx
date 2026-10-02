@@ -4,13 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { useToast } from "@/components/Toast";
+import QuotaFull, { useBookQuota } from "@/components/QuotaFull";
 import { api } from "@/lib/client/api";
 import { parseImportText, type ImportRow } from "@/lib/words";
+import { quotaFull } from "@/lib/wordbook-quota";
 import "./import.css";
 
 const LABEL: Record<ImportRow["status"], React.ReactNode> = { ok: <span className="tag tag-learning">可导入</span>, dup: <span className="tag tag-danger">重复</span>, empty: <span className="tag tag-new">空行</span>, bad: <span className="tag tag-danger">非英文</span> };
 
-/** 导入单词本（需求 3.3.3）：仅 txt，浏览器本地解析，只提交单词数组 */
+/** 导入单词本（需求 3.3.3）：仅 txt，浏览器本地解析，只提交单词数组；「我的词库」满了（3.3.1）一进来就说，不让选文件 */
 export default function ImportPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -22,6 +24,9 @@ export default function ImportPage() {
   const [book, setBook] = useState<{ id: string; total: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const quota = useBookQuota();
+  // 导入完成那一步本来就会是满的，只拦前两步
+  const blocked = !!quota && quotaFull(quota) && step !== 3;
   useEffect(() => { api<{ importMaxWords: number }>("/api/config/public").then((c) => setMax(c.importMaxWords)).catch(() => {}); }, []);
 
   /** 选文件后解析预览；词库名取文件名，上限 30 字要先截断，否则提交时才报参数错误（审计 F059） */
@@ -48,6 +53,7 @@ export default function ImportPage() {
       <main className="page narrow">
         <Link className="back" href="/wordbooks">‹ 词库</Link>
         <div className="page-head mt-8"><div><h1 className="page-title">导入单词本</h1><p className="page-sub">仅支持 .txt 文本文件，每行一个单词或短语；文件在浏览器本地解析，只上传词条列表</p></div></div>
+        {blocked && quota ? <QuotaFull max={quota.max} /> : <>
         <div className="steps"><span className={step === 1 ? "on" : "done"}>1 选择文件</span><span className={step === 2 ? "on" : step > 2 ? "done" : ""}>2 预览确认</span><span className={step === 3 ? "on" : ""}>3 完成</span></div>
         {step === 1 && (
           <>
@@ -80,6 +86,7 @@ export default function ImportPage() {
               <div className="btn-row mt-16"><Link className="btn btn-secondary" href={`/wordbooks/${book.id}`}>查看词库</Link><button className="btn btn-primary" onClick={async () => { await api("/api/wordbooks/current", { method: "PUT", json: { wordbookId: book.id } }); toast("已设为当前学习词库"); router.push("/home"); }}>设为当前学习并开始</button></div>
             </div>
         )}
+        </>}
       </main>
     </AppShell>
   );

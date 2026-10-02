@@ -5,6 +5,7 @@ import { getConfigInt } from "@/lib/config";
 import { isValidWord, normalizeWord } from "@/lib/words";
 import { lookupDictFields } from "@/lib/dict-db";
 import { wordCreateData } from "@/lib/dict";
+import { assertOwnBookRoom, createOwnWordbook } from "@/lib/study";
 
 /** 导入单词本（3.3.3）：前端已解析去重，只提交单词数组；新词带词典字段入库，不触发 AI */
 export const POST = withUser(async (req, _ctx, user) => {
@@ -16,6 +17,8 @@ export const POST = withUser(async (req, _ctx, user) => {
   for (const raw of body.words) { const w = normalizeWord(raw); if (isValidWord(w) && !seen.has(w)) { seen.add(w); words.push(w); } }
   if (!words.length) throw new ApiError(400, "没有可导入的单词");
   if (words.length > max) throw new ApiError(400, `超过单次 ${max} 词上限，请拆分文件后再导入`);
+  // 「我的词库」满了（3.3.1）就别先建一堆词条；事务里建词库时还会带锁再查一次
+  await assertOwnBookRoom(user.id);
 
   // 建词是全局表、可以先做；词库与成员放进一个事务，中途失败不会留下「有数无词」的半状态词库（审计 F016）
   for (let i = 0; i < words.length; i += 500) {
@@ -27,7 +30,7 @@ export const POST = withUser(async (req, _ctx, user) => {
   const idOf = new Map(rows.map((r) => [r.spelling, r.id]));
   const members = words.filter((s) => idOf.has(s)).map((s, k) => ({ wordId: idOf.get(s)!, sortOrder: k }));
   const book = await prisma.$transaction(async (tx) => {
-    const b = await tx.wordbook.create({ data: { name: body.name, type: "import", ownerId: user.id, wordCount: members.length } });
+    const b = await createOwnWordbook(tx, user.id, { name: body.name, type: "import", wordCount: members.length });
     for (let i = 0; i < members.length; i += 1000) {
       await tx.wordbookWord.createMany({ data: members.slice(i, i + 1000).map((m) => ({ wordbookId: b.id, ...m })), skipDuplicates: true });
     }

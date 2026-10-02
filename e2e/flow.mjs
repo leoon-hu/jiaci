@@ -1,5 +1,5 @@
 /**
- * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 多选加入词库 + 自建词库删词 → 长按打分 → 详情页词典兜底 → 跑步模式（拼接播放、切词、小条）
+ * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 列表拖拽 + 撤销 + 长按多选 → 多选加入词库 + 自建词库删词 → 我的词库本数上限 → 长按打分 → 详情页词典兜底 → 跑步模式（拼接播放、切词、小条）
  * 不依赖任何内置词库：每次用新账号，在页面内通过接口新建「e2e 测试词库」，结束后删除。
  * 用法：npm run dev 后执行 `npm run e2e`（默认 http://localhost:3000，输出截图到 e2e/out）
  * 环境变量：BASE_URL、CHROME（Chrome 可执行文件路径）
@@ -334,6 +334,26 @@ if (fixture.id) {
     log.push(`自建词库删词：提示行有「删除」 ${hint ? "✓" : "✗"}，拖到「删除」→ 卡片「${d.chip}」、高亮「${d.picked}」 ${d.chip === first && d.picked?.startsWith("删除") ? "✓" : "✗"}，行立刻消失、全部 2→1 ${goneNow ? "✓" : "✗"}；提交并刷新后只剩「${left.join("、")}」 ${left.length === 1 && left[0] !== first ? "✓" : "✗"}`);
     await evalJs(`fetch('/api/wordbooks/${collectId}',{method:'DELETE'})`);
   }
+}
+// ---- 3e. 我的词库本数上限（需求 3.3.1）：测试词库之外再建两本到 3 本，第 4 本新建 / 导入都被拒，三个入口都提前说满了 ----
+if (fixture.id) {
+  const post = (url, body) => `fetch('${url}',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(${JSON.stringify(body)})}).then(async r=>({status:r.status,body:await r.json()}))`;
+  const extra = [];
+  for (const name of ["e2e 上限 1", "e2e 上限 2"]) { const r = await evalJs(post("/api/wordbooks", { name })); if (r?.body?.id) extra.push(r.body.id); }
+  const over = await evalJs(post("/api/wordbooks", { name: "e2e 上限 3" }));
+  const overImport = await evalJs(post("/api/import", { name: "e2e 上限导入", words: ["abandon"] }));
+  await send("Page.navigate", { url: BASE + "/wordbooks" }); await waitFor("document.querySelector('.page-head .btn')", 10000); await sleep(500);
+  const listFull = await evalJs("!!document.querySelector('.quota-hint.full') && [...document.querySelectorAll('.page-head .btn')].every(b=>b.getAttribute('aria-disabled')==='true')");
+  await evalJs("[...document.querySelectorAll('.page-head .btn')].find(b=>b.textContent.includes('新建词库'))?.click()"); await sleep(800);
+  const stayed = await evalJs("location.pathname === '/wordbooks'");
+  await send("Page.navigate", { url: BASE + "/wordbooks/new" });
+  const newFull = await waitFor("document.querySelector('.quota-full') && !document.querySelector('.field .input')", 8000);
+  await send("Page.navigate", { url: BASE + "/import" });
+  const importFull = await waitFor("document.querySelector('.quota-full') && !document.querySelector('.drop')", 8000);
+  await shot("e2e-quota-full");
+  const collectQuota = await evalJs("fetch('/api/words/abandon/collect').then(r=>r.json()).then(j=>j.quota)");
+  log.push(`词库上限：再建 2 本 ${extra.length === 2 ? "✓" : "✗"}，第 4 本新建 ${over?.status}${over?.body?.error?.code === "wordbook_limit" ? " ✓" : " ✗"}、导入 ${overImport?.status}${overImport?.body?.error?.code === "wordbook_limit" ? " ✓" : " ✗"}；列表提示已满、按钮置灰 ${listFull ? "✓" : "✗"}，点「新建词库」不跳转 ${stayed ? "✓" : "✗"}；新建页 ${newFull ? "✓" : "✗"}、导入页 ${importFull ? "✓" : "✗"} 直接说满了；选择框接口 quota ${JSON.stringify(collectQuota)} ${collectQuota?.used === 3 && collectQuota?.max === 3 ? "✓" : "✗"}`);
+  for (const id of extra) await evalJs(`fetch('/api/wordbooks/${id}',{method:'DELETE'})`);
 }
 // ---- 4. 学习：正面 → 点击显示答案 → 长按认识上滑到已掌握 ----
 await send("Page.navigate", { url: BASE + "/study" }); await sleep(4000);

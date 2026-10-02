@@ -4,12 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { useToast } from "@/components/Toast";
+import QuotaFull, { useBookQuota } from "@/components/QuotaFull";
 import { api } from "@/lib/client/api";
+import { quotaFull } from "@/lib/wordbook-quota";
 import "./new.css";
 
 type Row = { id: string; spelling: string; def: string };
 
-/** 新建词库 + 手动添加（需求 3.3.4） */
+/** 新建词库 + 手动添加（需求 3.3.4）；「我的词库」满了（3.3.1）一进来就说，不显示表单 */
 export default function NewWordbookPage() {
   const router = useRouter();
   const { toast } = useToast();
@@ -20,6 +22,7 @@ export default function NewWordbookPage() {
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const wordRef = useRef<HTMLInputElement>(null);
+  const quota = useBookQuota();
 
   async function create() {
     const v = name.trim();
@@ -52,9 +55,13 @@ export default function NewWordbookPage() {
         {!book ? (
           <>
             <div className="page-head mt-12"><div><h1 className="page-title">新建词库</h1><p className="page-sub">创建后可逐个添加单词，或从内置词库收藏单词进来</p></div></div>
-            <div className="field"><label>词库名称</label><input className="input" placeholder="例如：我的雅思生词" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} /><div className="hint">最多 30 个字符</div></div>
-            <button className="btn btn-primary btn-lg btn-block" onClick={create} disabled={busy}>创建词库</button>
-            <p className="small muted center mt-16">已有单词文件？<Link href="/import">去导入单词本</Link></p>
+            {quota && quotaFull(quota) ? <QuotaFull max={quota.max} /> : (
+              <>
+                <div className="field"><label>词库名称</label><input className="input" placeholder="例如：我的雅思生词" maxLength={30} value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && create()} /><div className="hint">最多 30 个字符{quota && `；我的词库还能再加 ${quota.max - quota.used} 本（导入的与自建的合计最多 ${quota.max} 本）`}</div></div>
+                <button className="btn btn-primary btn-lg btn-block" onClick={create} disabled={busy}>创建词库</button>
+                <p className="small muted center mt-16">已有单词文件？<Link href="/import">去导入单词本</Link></p>
+              </>
+            )}
           </>
         ) : (
           <>
