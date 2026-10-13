@@ -95,6 +95,22 @@ p{margin:0 0 10px}
   body.has-tabbar{padding-bottom:calc(var(--tab-h) + env(safe-area-inset-bottom))}
 }
 
+/* ---------- 番茄钟（需求 3.8）：顶栏右侧的按钮，计时中变成「图标 + mm:ss」小钟（专注主色、休息绿）；学习页顶行也用它 ---------- */
+.pomo-btn{display:inline-flex;align-items:center;gap:5px;height:32px;padding:0 6px;border:0;border-radius:999px;background:transparent;color:var(--muted);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pomo-btn svg{width:20px;height:20px}
+.pomo-btn:hover{background:var(--bg);color:var(--text)}
+.pomo-btn.on{padding:0 10px 0 8px;background:var(--primary-soft);color:var(--primary)}
+.pomo-btn.on:hover{background:var(--primary-soft);color:var(--primary-strong)}
+.pomo-btn.on.break{background:var(--ok-soft);color:var(--ok)}
+.pomo-btn.on.break:hover{color:var(--ok)}
+.pomo-btn.paused{opacity:.75}
+.pomo-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;font-size:14px;font-weight:500}
+.pomo-row .seg button{font-size:13px}
+.pomo-clock{font-size:56px;font-weight:800;letter-spacing:1px;text-align:center;font-variant-numeric:tabular-nums;line-height:1.1;margin:10px 0 4px}
+.pomo-phase{text-align:center;font-size:14px;color:var(--muted);margin-bottom:14px}
+.pomo-phase.focus{color:var(--primary)}
+.pomo-phase.break{color:var(--ok)}
+
 /* ---------- 跑步模式播放中的小条（需求 3.2.6）：离开 /run 后挂在主框架底部，手机上让开底部 Tab ---------- */
 .run-pill{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:19;display:flex;align-items:center;gap:6px;width:min(560px,calc(100% - 24px));padding:6px 6px 6px 12px;background:var(--card);border:1px solid var(--border);border-radius:999px;box-shadow:var(--shadow-lg)}
 .run-pill .body{flex:1;min-width:0;display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none}

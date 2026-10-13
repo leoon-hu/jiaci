@@ -129,13 +129,14 @@ export default function RunPage() {
     </div>
   );
   else hero = (
-    // 播放中：单词、音标、释义、例句与四个按钮撑满首屏，字与按钮都大，跑步 / 骑行时看一眼就能看清、伸手就能按到
+    // 播放中：单词（标签在同一行）、释义、例句与四个按钮撑满首屏，正文垂直居中，字与按钮都大，跑步 / 骑行时看一眼就能看清、伸手就能按到
     <div className="run-hero now">
       {cur && (
         <div className="run-now">
-          <span className={`tag ${KIND_TAG[cur.kind][0]}`}>{KIND_TAG[cur.kind][1]}</span>
-          <div className={"run-word" + wordSize(cur.display ?? cur.spelling)}>{cur.display ?? cur.spelling}</div>
-          <div className="run-phonetic">{cur.phonetic ? (settings.accent === "uk" ? cur.phonetic.uk : cur.phonetic.us) : " "}</div>
+          <div className="run-word-line">
+            <span className={`tag ${KIND_TAG[cur.kind][0]}`}>{KIND_TAG[cur.kind][1]}</span>
+            <div className={"run-word" + wordSize(cur.display ?? cur.spelling)}>{cur.display ?? cur.spelling}</div>
+          </div>
           {settings.runDef && cur.def && <div className="run-def">{cur.def}</div>}
           {settings.runSentence !== "off" && cur.examples.length > 0 && (
             <div className="run-examples">

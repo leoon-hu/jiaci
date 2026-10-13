@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import WordDetail from "@/components/WordDetail";
 import RateBar from "@/components/RateBar";
+import PomodoroButton from "@/components/Pomodoro";
 import { IconSpeaker, IconTap, IconX } from "@/components/Icons";
 import { useToast } from "@/components/Toast";
 import { api, localToday, ClientApiError } from "@/lib/client/api";
@@ -219,6 +220,7 @@ function Study() {
       <div className="study-top">
         <Link className="btn btn-icon sm btn-ghost" href="/home" aria-label="退出学习" title="退出学习（进度已自动保存）"><IconX /></Link>
         <div className="progress"><i style={{ width: `${total ? (done / total) * 100 : 0}%` }} /></div>
+        <PomodoroButton compact />
         <div className="count">{done}/{total}</div>
       </div>
       {screen === "front" ? (

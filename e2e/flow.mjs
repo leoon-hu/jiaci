@@ -112,6 +112,23 @@ await evalJs(`[...(${ROW}?.querySelectorAll('button')||[])].find(b=>b.textConten
 log.push(`词库：测试词库设为当前学习 → 标签 ${await evalJs(`${ROW}?.querySelector('.tag-current')?.textContent`) === "学习中" ? "✓" : "✗"}`);
 await evalJs("document.querySelector('.books-tabs .tab')?.click()"); await sleep(500);
 log.push(`词库：切到「正在学习」Tab → 显示 ${await evalJs("document.querySelector('#tabpanel-0 .book-row .title')?.textContent")} ${await evalJs("document.querySelector('#tabpanel-0 .book-row .title')?.textContent") === "e2e 测试词库" ? "✓" : "✗"}`);
+// ---- 2b. 番茄钟（需求 3.8）：顶栏按钮 → 弹窗「开始专注」→ 顶栏小钟 mm:ss 在走 → 暂停后不走 → 放弃回到空闲 ----
+const pomoIdle = await evalJs("!!document.querySelector('.header-right .pomo-btn') && !document.querySelector('.pomo-btn .time')");
+await evalJs("document.querySelector('.header-right .pomo-btn')?.click()"); await sleep(400);
+const pomoModal = await evalJs("!!document.querySelector('.modal-backdrop.open .pomo-start')");
+await evalJs("document.querySelector('.pomo-start')?.click()"); await sleep(1600);
+const pomoT1 = await evalJs("document.querySelector('.pomo-btn.on.focus .time')?.textContent");
+await sleep(1100);
+const pomoT2 = await evalJs("document.querySelector('.pomo-btn.on.focus .time')?.textContent");
+await evalJs("document.querySelector('.header-right .pomo-btn')?.click()"); await sleep(300);
+await evalJs("document.querySelector('.pomo-toggle')?.click()"); await sleep(300);
+const pomoP1 = await evalJs("JSON.stringify([document.querySelector('.pomo-btn')?.className, document.querySelector('.pomo-btn .time')?.textContent, document.querySelector('.pomo-clock')?.textContent])");
+await sleep(1600);
+const pomoP2 = await evalJs("document.querySelector('.pomo-btn .time')?.textContent");
+await evalJs("document.querySelector('.pomo-stop')?.click()"); await sleep(400);
+const pomoGone = await evalJs("!document.querySelector('.pomo-btn .time') && !document.querySelector('.modal-backdrop.open') && !!document.querySelector('.header-right .pomo-btn')");
+const [pomoCls, pomoPt, pomoClock] = JSON.parse(pomoP1 ?? "[]");
+log.push(`番茄钟：顶栏空闲按钮 ${pomoIdle ? "✓" : "✗"}；点开弹窗 ${pomoModal ? "✓" : "✗"}；开始后小钟「${pomoT1}」→「${pomoT2}」在走 ${/^2[45]:\d\d$/.test(pomoT1 ?? "") && pomoT1 !== pomoT2 ? "✓" : "✗"}；暂停后弹窗「${pomoClock}」、小钟「${pomoPt}」→「${pomoP2}」不走 ${pomoCls?.includes("paused") && pomoPt === pomoP2 && pomoClock === pomoPt ? "✓" : "✗ " + pomoCls}；放弃回到空闲 ${pomoGone ? "✓" : "✗"}`);
 // ---- 3. 列表拖拽：把词拖到「已掌握」按钮上 → 绿色实心，toast 上「撤销」→ 恢复；再拖一次等提交；长按多选批量已掌握 ----
 await evalJs(`${ROW}?.click()`); await sleep(3000);
 /** 把第 i 行滚到视口中间再量坐标：列表上方的说明文字长短会变，坐标不能提前算死一次用到底 */
@@ -462,6 +479,9 @@ log.push(`详情：短语 give up → 标题「${await evalJs("document.querySel
   const ctlH = await evalJs("Math.round(document.querySelector('.run-ctl').getBoundingClientRect().height)");
   await shot("e2e-run-now");
   log.push(`跑步：首屏例句 ${exN} 条 ${exN === 2 ? "✓" : "✗"}，都有中文 ${exZh ? "✓" : "✗"}，本词高亮「${exHw}」 ${exHw && exHw.split(",").every((t) => t.startsWith((w0 ?? "").toLowerCase().slice(0, 4))) ? "✓" : "✗"}；按钮 ${ctls} ${ctls === "上一个/暂停/停止/下一个" ? "✓" : "✗"}，高 ${ctlH}px ${ctlH >= 72 ? "✓" : "✗"}；正文块高 ${heroH}px ${heroH >= 844 - 56 - 2 ? "✓" : "✗"}`);
+  // 标签与单词同一行、没有音标
+  const tagInline = await evalJs("!!document.querySelector('.run-word-line .tag') && !document.querySelector('.run-phonetic')");
+  log.push(`跑步：标签与单词同一行、无音标 ${tagInline ? "✓" : "✗"}`);
   await evalJs("document.querySelector('.run-controls [aria-label=\"下一个\"]')?.click()"); await sleep(400);
   const w1 = await evalJs("document.querySelector('.run-word')?.textContent");
   // 一个词（两遍 + 释义 + 例句 + 2 秒间隔）十几秒，等它自己走到下一个

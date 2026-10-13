@@ -3,6 +3,7 @@ import Link from "next/link";
 import Logo from "./Logo";
 import TermsNotice from "./TermsNotice";
 import RunPill from "./RunPill";
+import PomodoroButton from "./Pomodoro";
 import { IconBooks, IconSettings, IconStudy } from "./Icons";
 import { useUser } from "./UserContext";
 
@@ -14,7 +15,7 @@ const NAV = [
 
 export type NavKey = (typeof NAV)[number]["key"];
 
-/** 主框架：桌面顶部导航 / 手机底部 Tab（需求 4.1）；tabbar=false 的子页面（详情、学习）不显示底部 Tab */
+/** 主框架：桌面顶部导航 / 手机底部 Tab（需求 4.1），顶栏右侧有番茄钟按钮（需求 3.8）；tabbar=false 的子页面（详情、学习）不显示底部 Tab */
 export default function AppShell({ nav, tabbar = true, children }: { nav: NavKey; tabbar?: boolean; children: React.ReactNode }) {
   const user = useUser();
   const email = user?.email;
@@ -31,6 +32,7 @@ export default function AppShell({ nav, tabbar = true, children }: { nav: NavKey
           <Link className="brand" href="/home"><Logo size={28} />AI加词</Link>
           <nav className="app-nav">{links}</nav>
           <div className="header-right">
+            <PomodoroButton />
             {email && <span className="email">{email}</span>}
             <span className="avatar">{(email?.[0] ?? "U").toUpperCase()}</span>
           </div>
