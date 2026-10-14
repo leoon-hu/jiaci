@@ -332,7 +332,8 @@ button.row{width:100%;border:0;border-top:1px solid var(--border);background:non
 /* ---------- 弹层 ---------- */
 .modal-backdrop{position:fixed;inset:0;background:rgba(10,12,18,.5);display:none;align-items:center;justify-content:center;z-index:70;padding:16px;backdrop-filter:blur(2px)}
 .modal-backdrop.open{display:flex}
-.modal{background:var(--card);border-radius:18px;width:100%;max-width:440px;padding:22px;box-shadow:var(--shadow-lg);animation:pop .18s ease-out}
+/* 限高可滚：矮屏（横屏手机、开着开发者工具）上内容比视口高时在框里滚，不裁掉底部按钮 */
+.modal{background:var(--card);border-radius:18px;width:100%;max-width:440px;max-height:calc(100vh - 32px);max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;padding:22px;box-shadow:var(--shadow-lg);animation:pop .18s ease-out}
 .modal h3{margin:0 0 8px;font-size:18px}
 .modal p{color:var(--muted);font-size:14px}
 .modal .actions{display:flex;gap:10px;margin-top:18px}
@@ -357,7 +358,7 @@ button.row{width:100%;border:0;border-top:1px solid var(--border);background:non
 @keyframes pop{from{transform:translateY(12px);opacity:0}to{transform:none;opacity:1}}
 @media (max-width:767px){
   .modal-backdrop{align-items:flex-end;padding:0}
-  .modal{max-width:none;border-radius:20px 20px 0 0;padding-bottom:calc(22px + env(safe-area-inset-bottom))}
+  .modal{max-width:none;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);border-radius:20px 20px 0 0;padding-bottom:calc(22px + env(safe-area-inset-bottom))}
 }
 
 /* ---------- 单词详情浮层（拦截路由 @detail：盖在词库列表 / 学习页之上，返回不重新加载底层页面） ---------- */
