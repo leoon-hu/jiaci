@@ -13,6 +13,7 @@ import WordPeek from "./WordPeek";
 import SwipeTabs from "./SwipeTabs";
 import WordFreqPanel from "./WordFreqPanel";
 import { wordKind } from "@/lib/words";
+import { categorySummary, type WordCategory } from "@/lib/categories";
 import Modal from "./Modal";
 import CollectModal, { type CollectTarget } from "./CollectModal";
 import { IconBookmark, IconChevron, IconEdit, IconSpeaker, IconFlag } from "./Icons";
@@ -28,7 +29,7 @@ const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(
 const LEVEL: Record<number, string> = { 1: "基础", 2: "自然", 3: "场景" };
 const TABS = ["释义", "关联词", "记忆", "词频"];
 /** 首屏默认折叠的块 */
-type FoldKey = "meanings" | "collocations" | "phrases" | "patterns" | "family";
+type FoldKey = "meanings" | "collocations" | "phrases" | "patterns" | "family" | "categories";
 
 const AI = () => <span className="ai">AI</span>;
 /** 折叠块的一行摘要：前几条 + 条数 */
@@ -82,7 +83,8 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
   if (v.phrases.length) foldKeys.push("phrases");
   if (v.patterns.length) foldKeys.push("patterns");
   if (v.family.length) foldKeys.push("family");
-  /** 默认展开的块：词族短、常看，其余默认折叠 */
+  if (detail.categories.length) foldKeys.push("categories");
+  /** 默认展开的块：词族短、常看，其余默认折叠（同类词一类就几十个词，默认折叠） */
   const isOpen = (k: FoldKey) => open[k] ?? k === "family";
   const allOpen = foldKeys.length > 0 && foldKeys.every(isOpen);
   const toggle = (k: FoldKey) => setOpen((o) => ({ ...o, [k]: !isOpen(k) }));
@@ -119,6 +121,18 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
   const family = (items: Array<{ w: string; pos: string; zh: string }>) => (
     <div className="kv-list">{items.map((f, i) => <div className="kv" key={i}><span className="en"><WordTokens text={f.w} headword={hw} />{f.pos && <span className="pos-sm">{f.pos}</span>}</span><span className="zh">{f.zh}</span></div>)}</div>
   );
+  /** 同类词（需求 3.4 I7）：按类别分组，词横排、每个词后面小字带主释义；点词走点词小框，短语整个算一个词（WordTokens 会把短语拆开） */
+  const categories = (items: WordCategory[]) => items.map((c) => (
+    <div className="cat" key={c.name}>
+      <div className="cat-name">{c.name}</div>
+      <div className="cat-words">{c.words.map((w) => (
+        <span className="cat-w" key={w.spelling}>
+          <span className="w" role="button" tabIndex={0} data-w={w.spelling} onClick={(e) => { e.stopPropagation(); onPick(w.spelling); }} onKeyDown={(e) => { if (e.key === "Enter") onPick(w.spelling); }}>{w.display ?? w.spelling}</span>
+          {w.def && <small>{w.def}</small>}
+        </span>
+      ))}</div>
+    </div>
+  ));
   const relatedEmpty = !v.synonyms.length && !v.antonyms.length && !v.confusables.length && !v.mistakes.length && !v.inflections.length && !v.cognates.length;
   const memoryEmpty = !v.mnemonic && !v.etymology && !v.usage;
 
@@ -179,6 +193,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
                 </Fold>
               )}
               {v.family.length > 0 && <Fold open={isOpen("family")} onToggle={() => toggle("family")} title="词族" summary={summarize(v.family.map((f) => f.w), v.family.length, 4)}>{family(v.family)}</Fold>}
+              {detail.categories.length > 0 && <Fold open={isOpen("categories")} onToggle={() => toggle("categories")} title="同类词" ai={false} summary={categorySummary(detail.categories)}>{categories(detail.categories)}</Fold>}
               {v.provider && <div className="ai-source">词条资料由 {AI_PROVIDER_LABEL[v.provider]} 填充，可在设置里切换来源</div>}
               <div className="detail-record">
                 {!expanded ? (

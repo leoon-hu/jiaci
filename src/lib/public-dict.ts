@@ -7,6 +7,8 @@ import { ipaBody, wordFreq, type WordFreq } from "./dict";
 import { isValidWord, normalizeWord, wordKind, type WordKind } from "./words";
 import { candidateLemmas, tokenize } from "./lemma";
 import { bookByName, type PublicBook } from "./public-books";
+import { wordCategories } from "./categories-db";
+import type { WordCategory } from "./categories";
 
 /**
  * 公开词条页 / 词库页（/dict/…，匿名可看，供搜索引擎收录）的取数。
@@ -27,6 +29,8 @@ export type PublicWord = {
   view: WordView; freq: WordFreq;
   /** 收录本词的内置词库（按展示顺序） */
   books: PublicBook[];
+  /** 同类词（需求 3.4 I7）：本词所属的类别及各类别里的其它词；成员都在 word 表里，页面上每个都是内链 */
+  categories: WordCategory[];
   /** 正文里可以链到别的词条的 token（小写）→ 目标拼写；只链 word 表里有的词 */
   links: Record<string, string>;
   /** AI 资料生成时间（sitemap 的 lastmod） */
@@ -85,12 +89,15 @@ export const loadPublicWord = cache(async (spelling: string): Promise<PublicWord
   const raw = wordView(word, ai, PUBLIC_AI);
   // 音标去掉斜杠（页面用 CSS 画）：公开页的数据里不出现「/ˈlæsi/」这种会被搜索引擎当路径去抓的字符串
   const view: WordView = raw.phonetic ? { ...raw, phonetic: { us: ipaBody(raw.phonetic.us), uk: ipaBody(raw.phonetic.uk) } } : raw;
-  const [memberships, links] = await Promise.all([
+  const [memberships, links, categories] = await Promise.all([
     prisma.wordbookWord.findMany({ where: { wordId: word.id, wordbook: { type: "builtin" } }, select: { wordbook: { select: { name: true, sortOrder: true } } }, orderBy: { wordbook: { sortOrder: "asc" } } }),
     linkTable(spelling, englishTexts(view)),
+    wordCategories(word.id, PUBLIC_AI),
   ]);
+  // 同类词的成员本来就都在 word 表里，直接进内链表，不用再查一遍
+  for (const c of categories) for (const w of c.words) links[w.spelling] = w.spelling;
   const books = memberships.map((m) => bookByName(m.wordbook.name)).filter((b): b is PublicBook => !!b);
-  return { id: word.id, spelling, display: word.display, kind: wordKind(spelling), view, freq: wordFreq(word), books, links, updatedAt: ai?.generatedAt ?? null };
+  return { id: word.id, spelling, display: word.display, kind: wordKind(spelling), view, freq: wordFreq(word), books, categories, links, updatedAt: ai?.generatedAt ?? null };
 });
 
 /** phonetic 不带斜杠（见 loadPublicWord） */

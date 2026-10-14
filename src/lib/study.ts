@@ -11,6 +11,8 @@ import { fromDate, toDate } from "./dates";
 import { getSettings } from "./settings";
 import { RUN_MAX_EXAMPLES } from "./run-plan";
 import { quotaFull, quotaFullMessage, type BookQuota } from "./wordbook-quota";
+import { wordCategories } from "./categories-db";
+import type { WordCategory } from "./categories";
 
 /** ---------- 通用查询 ---------- */
 
@@ -82,6 +84,8 @@ export type WordDetail = {
   view: WordView;
   /** 词频 Tab：当代语料 / BNC 排名、柯林斯星级、牛津 3000、考试标签 */
   freq: WordFreq;
+  /** 同类词（需求 3.4 I7）：本词所属的类别及各类别里的其它词，按词表顺序；不在任何类别里是空数组 */
+  categories: WordCategory[];
   status: WordStatus; progress: ProgressState; labels: { know: string; fuzzy: string };
   note: string | null;
   history: Array<{ d: string; r: RateResult; i: number }>;
@@ -114,11 +118,13 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
   const currentId = await getCurrentWordbookId(userId);
   const useBookId = ctxBook?.id ?? currentId;
   const scope = await scopeOfBook(userId, useBookId);
-  const [st, note, logs, ai] = await Promise.all([
+  const [st, note, logs, ai, categories] = await Promise.all([
     wordStatusFor(userId, word.id, scope),
     prisma.userWordNote.findUnique({ where: { userId_wordId: { userId, wordId: word.id } } }),
     prisma.studyLog.findMany({ where: { userId, wordId: word.id, scope }, orderBy: [{ studyDate: "asc" }, { studiedAt: "asc" }], take: 200 }),
     prisma.word.findUnique({ where: { id: word.id }, select: aiDetailSelect(primary) }),
+    // 同类词成员的主释义按用户选的资料来源取，与单词列表同一口径
+    wordCategories(word.id, settings.aiProvider),
   ]);
   const aiAvailable = ai ? aiProvidersWithData(ai) : [];
   // 选中哪一家：与 pickAi 一致——auto 取第一家有资料的，指定厂商没资料就退回词典
@@ -137,6 +143,7 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     id: word.id, spelling: word.spelling, display: word.display ?? null, view,
     aiAvailable,
     freq: wordFreq(word),
+    categories,
     // 打分按钮的天数按客户端日期算，否则和实际打分用的日期差一天（审计 F026）
     status: st.status, progress: st.progress, labels: rateLabels(st.progress, await schedulerOptions(), today),
     note: note?.note ?? null,

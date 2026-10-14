@@ -452,6 +452,16 @@ log.push(`详情：提交反馈 → toast「${fbToast}」 ${fbToast?.includes("�
 await send("Page.navigate", { url: BASE + "/word/give%20up" }); await sleep(3500);
 const pdef = await evalJs("document.querySelector('.core-def')?.textContent");
 log.push(`详情：短语 give up → 标题「${await evalJs("document.querySelector('.entry-title .spelling')?.textContent")}」，核心义「${pdef?.slice(0, 24)}」 ${pdef?.includes("放弃") ? "✓" : "✗"}`);
+// 同类词（需求 3.4 I7）：apple 在「水果」里——首屏 Tab 的词族下面一个默认折叠的「同类词」块，点开后按类别列出别的水果、每个词可点出点词小框
+await send("Page.navigate", { url: BASE + "/word/apple" }); await sleep(3500);
+const catFolded = await evalJs("[...document.querySelectorAll('#tabpanel-0 .fold:not(.open) h4')].some(h=>h.textContent.startsWith('同类词'))");
+const catSum = await evalJs("[...document.querySelectorAll('#tabpanel-0 .fold h4')].find(h=>h.textContent.startsWith('同类词'))?.querySelector('.fold-sum')?.textContent");
+await evalJs("[...document.querySelectorAll('#tabpanel-0 .fold h4')].find(h=>h.textContent.startsWith('同类词'))?.click()"); await sleep(300);
+const catGroups = await evalJs("JSON.stringify([...document.querySelectorAll('#tabpanel-0 .cat')].map(c=>c.querySelector('.cat-name')?.textContent+':'+c.querySelectorAll('.cat-w .w').length))");
+await evalJs("[...document.querySelectorAll('#tabpanel-0 .cat-w .w')].find(w=>w.dataset.w==='banana')?.click()"); await sleep(1500);
+const catPeek = await evalJs("document.querySelector('.peek .peek-word')?.textContent");
+await shot("e2e-word-categories");
+log.push(`详情：apple 的同类词默认折叠、摘要「${catSum?.slice(0, 30)}」 ${catFolded && catSum?.startsWith("水果：") ? "✓" : "✗"}；点开后 ${catGroups} ${/"水果:\d\d/.test(catGroups ?? "") ? "✓" : "✗"}；点 banana 弹出点词小框「${catPeek?.slice(0, 12)}」 ${catPeek?.includes("banana") ? "✓" : "✗"}`);
 // ---- 跑步模式（需求 3.2.6）：/run 把今日队列的音频拼成一整段 → 开始播放 → 切词 → 自动推进 → 改设置不断播 → 首页小条 → 停止 ----
 {
   await send("Page.navigate", { url: BASE + "/run" }); await sleep(2500);

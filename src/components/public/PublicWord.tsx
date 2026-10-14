@@ -105,6 +105,16 @@ export default function PublicWord({ data }: { data: Data }) {
       {v.inflections.length > 0 && <Section id="inflections" title="词形变化"><div className="kv-list">{v.inflections.map((f, i) => <div className="kv" key={i}><span className="en" lang="en">{tok(f.w)}</span><span className="zh">{f.label}</span></div>)}</div></Section>}
       {v.family.length > 0 && <Section id="family" title="词族" ai>{family(v.family)}</Section>}
       {v.cognates.length > 0 && <Section id="cognates" title="同根词" ai>{family(v.cognates)}</Section>}
+      {data.categories.length > 0 && (
+        <Section id="categories" title="同类词">
+          {data.categories.map((c) => (
+            <div className="cat" key={c.name}>
+              <div className="cat-name">{c.name}</div>
+              <div className="cat-words">{c.words.map((w) => <span className="cat-w" key={w.spelling}><span lang="en">{tok(w.display ?? w.spelling)}</span>{w.def && <small>{w.def}</small>}</span>)}</div>
+            </div>
+          ))}
+        </Section>
+      )}
 
       {v.mnemonic && <Section id="mnemonic" title="助记" ai><div className="mnemonic">{v.mnemonic}</div></Section>}
       {v.etymology && (v.etymology.parts.length > 0 || v.etymology.origin) && (

@@ -14,6 +14,7 @@
     "dict:sync": "tsx scripts/dict.ts sync",
     "dict:stats": "tsx scripts/dict.ts stats",
     "wordbooks:build": "tsx scripts/wordbooks.ts",
+    "categories:build": "tsx scripts/categories.ts",
     "ai:fill": "tsx scripts/ai-fill.ts",
     "audio:generate": "tsx scripts/audio.ts generate",
     "audio:stats": "tsx scripts/audio.ts stats",

@@ -557,6 +557,15 @@ textarea.input.note-input{min-height:220px;font-size:16px;line-height:1.6}
 .fold-all:hover{text-decoration:underline}
 .ai-source{font-size:11px;color:var(--faint);margin-top:16px}
 
+/* 同类词（需求 3.4 I7）：按类别分组，一类一段；词横排自动换行，每个词后面跟一个小字主释义 */
+.cat{padding:6px 0}
+.cat + .cat{border-top:1px solid var(--border)}
+.cat-name{font-size:13px;font-weight:600;margin-bottom:4px}
+.cat-words{display:flex;flex-wrap:wrap;gap:2px 14px}
+.cat-w{display:inline-flex;align-items:baseline;gap:4px;line-height:1.7;max-width:100%}
+.cat-w .w{font-weight:500}
+.cat-w small{color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:9em}
+
 /* 条款更新提示条（审计 F171） */
 .terms-notice{display:flex;align-items:center;gap:12px;flex-wrap:wrap;max-width:1120px;margin:0 auto;padding:10px 20px;background:var(--card);border-bottom:1px solid var(--border);font-size:13px;color:var(--muted)}
 .terms-notice a{color:var(--primary)}

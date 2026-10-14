@@ -199,6 +199,7 @@ model Word {
   aiOpenai   WordAiOpenai?
   aiDeepseek WordAiDeepseek?
   bookmarks  WordbookBookmark[]
+  categories WordCategoryMember[]
 
   @@index([kind])
   @@index([frq])
@@ -221,6 +222,39 @@ model WordbookWord {
   @@index([wordbookId, sortOrder])
   @@index([wordId])
   @@map("wordbook_word")
+}
+
+/// 同类词类别（需求 3.4 I7）：「家庭成员」「水果」「学科」这类语义类别，名字就是界面上显示的；
+/// 内容来自仓库里手工整理的分类词表，由 scripts/categories.ts 整表刷新，不是 AI 字段，没有用户数据挂在上面
+model WordCategory {
+  /// 类别 ID
+  id        String @id @default(cuid())
+  /// 类别名（中文，界面上直接显示），唯一
+  name      String @unique
+  /// 展示顺序（词表里的先后）
+  sortOrder Int    @default(0) @map("sort_order")
+  members   WordCategoryMember[]
+
+  @@map("word_category")
+}
+
+/// 同类词类别的成员：一个词可以属于多个类别（orange 既是水果也是颜色）
+model WordCategoryMember {
+  /// 类别 ID
+  categoryId String       @map("category_id")
+  /// 单词 ID
+  wordId     String       @map("word_id")
+  /// 在类别里的顺序（词表里的先后，常用的在前）
+  sortOrder  Int          @default(0) @map("sort_order")
+  /// 这个词在本类别里显示的释义：多义词按类别该取的那个义项（词表里写「词=释义」）；空 = 用词条自己的主释义
+  gloss      String?
+  category   WordCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  word       Word         @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@id([categoryId, wordId])
+  /// 按词找它所属的类别
+  @@index([wordId])
+  @@map("word_category_member")
 }
 
 /// 词库书签（需求 3.3.5）：一个用户在一本词库里只有一个书签，新的覆盖旧的。

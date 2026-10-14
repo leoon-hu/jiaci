@@ -11,6 +11,8 @@
  *   audio_clip     → (text_hash, voice)
  *   wordbook(内置) → name
  *   wordbook_word  → (词库名, 拼写)
+ *   word_category  → name（类别名）
+ *   word_category_member → (类别名, 拼写)
  *
  * 只同步内容，绝不碰用户数据：user_*、session、study_log、otp_code、system_config 都不在范围内。
  * word 只增不改删（线上用户查出来的词保留）；内置词库的成员按本机为准增删，这与本机
@@ -20,7 +22,7 @@
  * 用法（TARGET_DATABASE_URL 指向线上库，通常经 SSH 隧道访问）：
  *   npm run sync:content                      只比对、打印差异，不写（默认）
  *   npm run sync:content -- --apply           实际写入
- *   npm run sync:content -- --only ai,audio   只同步部分：word / ai / audio / books
+ *   npm run sync:content -- --only ai,audio   只同步部分：word / ai / audio / books / categories
  *
  * 比对方式：两边各算一遍「可比较列」的 md5 签名（不含 id、不含 created_at / updated_at），
  * 只把签名不同或线上没有的行取全量发过去；重复执行不会产生无谓的写入。
@@ -251,6 +253,61 @@ async function syncBooks(local: Db, remote: Db) {
   log(`  → 词数订正 ${n} 本`);
 }
 
+/* ---------------- 同类词类别 ---------------- */
+
+/**
+ * 同类词（需求 3.4 I7）：类别按名字、成员按 (类别名, 拼写)，本机为准增删——这两张表上没有用户数据，
+ * 与本机 categories:build 的「按名字整表刷新、文件里没有的删掉」一致。线上没有的拼写跳过。
+ */
+async function syncCategories(local: Db, remote: Db) {
+  const sel = `SELECT id, name, sort_order FROM word_category`;
+  const [lc, rc] = await Promise.all([
+    local.$queryRawUnsafe<Array<{ id: string; name: string; sort_order: number }>>(`${sel} ORDER BY sort_order`),
+    remote.$queryRawUnsafe<Array<{ id: string; name: string; sort_order: number }>>(sel),
+  ]);
+  const rmap = new Map(rc.map((c) => [c.name, c]));
+  const lnames = new Set(lc.map((c) => c.name));
+  const gone = rc.filter((c) => !lnames.has(c.name));
+  log(`word_category：本机 ${lc.length}，线上 ${rc.length}，新增 ${lc.filter((c) => !rmap.has(c.name)).length}，删除 ${gone.length}`);
+  if (APPLY) {
+    for (const c of lc) {
+      await remote.$executeRawUnsafe(
+        `INSERT INTO word_category (id, name, sort_order) SELECT $1::text, $2::text, $3::int WHERE NOT EXISTS (SELECT 1 FROM word_category WHERE name = $2::text)`,
+        c.id, c.name, c.sort_order);
+      await remote.$executeRawUnsafe(`UPDATE word_category SET sort_order = $2::int WHERE name = $1::text AND sort_order <> $2::int`, c.name, c.sort_order);
+    }
+    // 成员表的外键 ON DELETE CASCADE，删类别连成员一起删
+    if (gone.length) await remote.$executeRawUnsafe(`DELETE FROM word_category WHERE name = ANY($1::text[])`, gone.map((c) => c.name));
+  }
+  const memSel = `SELECT c.name, w.spelling, m.sort_order, m.gloss FROM word_category_member m JOIN word_category c ON c.id = m.category_id JOIN word w ON w.id = m.word_id`;
+  type Mem = { name: string; spelling: string; sort_order: number; gloss: string | null };
+  const [lm, rm] = await Promise.all([local.$queryRawUnsafe<Mem[]>(memSel), remote.$queryRawUnsafe<Mem[]>(memSel)]);
+  const key = (r: { name: string; spelling: string }) => `${r.name}\u0000${r.spelling}`;
+  const val = (r: Mem) => `${r.sort_order}\u0000${r.gloss ?? ""}`;
+  const rmem = new Map(rm.map((r) => [key(r), val(r)]));
+  const lkeys = new Set(lm.map(key));
+  const put = lm.filter((r) => rmem.get(key(r)) !== val(r));
+  const del = rm.filter((r) => !lkeys.has(key(r)) && lnames.has(r.name));
+  log(`word_category_member：本机 ${lm.length}，线上 ${rm.length}，写入 ${put.length}，删除 ${del.length}`);
+  if (!APPLY) return;
+  let written = 0;
+  for (const part of chunks(put, CHUNK.member)) {
+    const v = buildValues(part.map((r) => [r.name, r.spelling, r.sort_order, r.gloss]), ["::text", "::text", "::int", "::text"]);
+    written += await remote.$executeRawUnsafe(
+      `INSERT INTO word_category_member (category_id, word_id, sort_order, gloss)
+       SELECT c.id, w.id, t.sort_order, t.gloss FROM (VALUES ${v.sql}) AS t(name, spelling, sort_order, gloss)
+       JOIN word_category c ON c.name = t.name JOIN word w ON w.spelling = t.spelling
+       ON CONFLICT (category_id, word_id) DO UPDATE SET sort_order = EXCLUDED.sort_order, gloss = EXCLUDED.gloss`, ...v.params);
+  }
+  for (const part of chunks(del, CHUNK.member)) {
+    const v = buildValues(part.map((r) => [r.name, r.spelling]), ["::text", "::text"]);
+    await remote.$executeRawUnsafe(
+      `DELETE FROM word_category_member m USING word_category c, word w, (VALUES ${v.sql}) AS t(name, spelling)
+       WHERE c.id = m.category_id AND w.id = m.word_id AND c.name = t.name AND w.spelling = t.spelling`, ...v.params);
+  }
+  if (put.length !== written) log(`  ! ${put.length - written} 条成员线上没有对应拼写，跳过（先同步 word）`);
+}
+
 /* ---------------- 入口 ---------------- */
 
 async function main() {
@@ -273,6 +330,7 @@ async function main() {
     if (want("ai")) { await syncAi(local, remote, "word_ai_deepseek"); await syncAi(local, remote, "word_ai_openai"); }
     if (want("audio")) await syncAudio(local, remote);
     if (want("books")) await syncBooks(local, remote);
+    if (want("categories")) await syncCategories(local, remote);
     log(APPLY
       ? "\n完成。音频文件要另外用 rsync 传到线上的 AUDIO_DIR"
       : "\n以上都没有写入。确认无误后加 --apply 重跑。");
