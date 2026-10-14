@@ -28,7 +28,7 @@ function nextText(h: { r: RateResult; i: number }) {
 const today = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const LEVEL: Record<number, string> = { 1: "基础", 2: "自然", 3: "场景" };
 const TABS = ["释义", "关联词", "记忆", "词频"];
-/** 首屏默认折叠的块 */
+/** 可折叠的块：前五个在释义 Tab（参与「全部展开 / 收起」），同类词在关联词 Tab 末尾、单独折叠 */
 type FoldKey = "meanings" | "collocations" | "phrases" | "patterns" | "family" | "categories";
 
 const AI = () => <span className="ai">AI</span>;
@@ -83,8 +83,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
   if (v.phrases.length) foldKeys.push("phrases");
   if (v.patterns.length) foldKeys.push("patterns");
   if (v.family.length) foldKeys.push("family");
-  if (detail.categories.length) foldKeys.push("categories");
-  /** 默认展开的块：词族短、常看，其余默认折叠（同类词一类就几十个词，默认折叠） */
+  /** 默认展开的块：词族短、常看，其余默认折叠（关联词 Tab 里的同类词一类就几十个词，也默认折叠） */
   const isOpen = (k: FoldKey) => open[k] ?? k === "family";
   const allOpen = foldKeys.length > 0 && foldKeys.every(isOpen);
   const toggle = (k: FoldKey) => setOpen((o) => ({ ...o, [k]: !isOpen(k) }));
@@ -133,7 +132,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
       ))}</div>
     </div>
   ));
-  const relatedEmpty = !v.synonyms.length && !v.antonyms.length && !v.confusables.length && !v.mistakes.length && !v.inflections.length && !v.cognates.length;
+  const relatedEmpty = !v.synonyms.length && !v.antonyms.length && !v.confusables.length && !v.mistakes.length && !v.inflections.length && !v.cognates.length && !detail.categories.length;
   const memoryEmpty = !v.mnemonic && !v.etymology && !v.usage;
 
   return (
@@ -193,7 +192,6 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
                 </Fold>
               )}
               {v.family.length > 0 && <Fold open={isOpen("family")} onToggle={() => toggle("family")} title="词族" summary={summarize(v.family.map((f) => f.w), v.family.length, 4)}>{family(v.family)}</Fold>}
-              {detail.categories.length > 0 && <Fold open={isOpen("categories")} onToggle={() => toggle("categories")} title="同类词" ai={false} summary={categorySummary(detail.categories)}>{categories(detail.categories)}</Fold>}
               {v.provider && <div className="ai-source">词条资料由 {AI_PROVIDER_LABEL[v.provider]} 填充，可在设置里切换来源</div>}
               <div className="detail-record">
                 {!expanded ? (
@@ -238,6 +236,8 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
               </div>}
               {v.inflections.length > 0 && <div className="entry-section"><h4>词形变化</h4><div className="kv-list">{v.inflections.map((f, i) => <div className="kv" key={i}><span className="en"><WordTokens text={f.w} /></span><span className="zh">{f.label}</span></div>)}</div></div>}
               {v.cognates.length > 0 && <div className="entry-section"><h4>同根词 <AI /></h4>{family(v.cognates)}</div>}
+              {/* 同类词（需求 3.4 I7）：手工分类词表，不是 AI 字段；放关联词 Tab 末尾，默认折叠（2026-10-15 用户定，原来在释义 Tab 词族下面） */}
+              {detail.categories.length > 0 && <Fold open={isOpen("categories")} onToggle={() => toggle("categories")} title="同类词" ai={false} summary={categorySummary(detail.categories)}>{categories(detail.categories)}</Fold>}
             </div>
             <div>
               {memoryEmpty && <div className="tab-empty">该词暂无记忆内容</div>}
