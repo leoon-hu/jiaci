@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { prisma } from "./db";
-import { mergeDictRows, wordCreateData, type DictFields, type DictRow } from "./dict";
+import { inflectionOf, mergeDictRows, wordCreateData, type DictFields, type DictRow } from "./dict";
 
 /** 按小写拼写批量查 dict_entry，大小写变体合并后返回可写入 word 表的词典字段 */
 export async function lookupDictFields(spellings: string[], db: PrismaClient = prisma): Promise<Map<string, DictFields>> {
@@ -10,6 +10,22 @@ export async function lookupDictFields(spellings: string[], db: PrismaClient = p
   const groups = new Map<string, DictRow[]>();
   for (const r of rows) (groups.get(r.spelling) ?? groups.set(r.spelling, []).get(r.spelling)!).push(r);
   for (const [spelling, g] of groups) out.set(spelling, mergeDictRows(g));
+  return out;
+}
+
+/** 词典里这些拼写各自写着的原形（exchange 的 0:，plumes → plume，小写）；不是变形的不在结果里。有小写那行就只看它 */
+export async function dictLemmas(spellings: string[], db: PrismaClient = prisma): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!spellings.length) return out;
+  const rows = await db.dictEntry.findMany({ where: { spelling: { in: spellings } }, select: { word: true, spelling: true, exchange: true } });
+  rows.sort((a, b) => Number(b.word === b.spelling) - Number(a.word === a.spelling));
+  const seen = new Set<string>();
+  for (const r of rows) {
+    if (seen.has(r.spelling)) continue;
+    seen.add(r.spelling);
+    const base = inflectionOf(r);
+    if (base) out.set(r.spelling, base.toLowerCase());
+  }
   return out;
 }
 

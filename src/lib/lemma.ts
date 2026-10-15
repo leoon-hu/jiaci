@@ -29,8 +29,11 @@ const IRREGULAR: Record<string, string> = {
   lent: "lend", wound: "wind", ground: "grind", leapt: "leap", trod: "tread", trodden: "tread", woven: "weave",
 };
 
+/** 去原形之前的规范化：小写、去掉所有格 / 缩写的 's（She's → she） */
+export const lemmaBase = (token: string): string => token.toLowerCase().replace(/[’']s?$/, "");
+
 export function candidateLemmas(token: string): string[] {
-  const t = token.toLowerCase().replace(/[’']s?$/, "");
+  const t = lemmaBase(token);
   if (IRREGULAR[t]) return [IRREGULAR[t], t];
   const c = [t];
   if (/ies$/.test(t)) c.push(t.slice(0, -3) + "y");
@@ -49,7 +52,7 @@ export function candidateLemmas(token: string): string[] {
 }
 
 /** 不规则表里的原形（went → go）；不在表里返回 null */
-export const irregularLemma = (token: string): string | null => IRREGULAR[token.toLowerCase().replace(/[’']s?$/, "")] ?? null;
+export const irregularLemma = (token: string): string | null => IRREGULAR[lemmaBase(token)] ?? null;
 
 /**
  * 例句里的一个 token 是不是本词（或其变形）：详情页 WordTokens 加粗、跑步页高亮共用这一条规则。

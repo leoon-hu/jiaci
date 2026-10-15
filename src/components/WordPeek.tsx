@@ -6,7 +6,7 @@ import { speakWord, voiceKeyOf } from "@/lib/client/speech";
 import { STATUS_LABEL, type WordStatus } from "@/lib/status";
 import { IconBookmark, IconSpeaker, IconX } from "./Icons";
 
-type Peek = { spelling: string; display?: string | null; status: WordStatus; phonetic: { us: string; uk: string } | null; core: string | null; meanings: Array<{ pos: string; defs: string[] }>; stopword?: boolean };
+type Peek = { spelling: string; display?: string | null; status: WordStatus; phonetic: { us: string; uk: string } | null; core: string | null; meanings: Array<{ pos: string; defs: string[] }>; stopword?: boolean; lemmaOf?: { base: string; label: string } | null };
 
 /**
  * 点击单词后页面下部弹出的小框：发音 + 核心义 + 释义，点击进入详情（需求 3.2.5）。
@@ -54,6 +54,10 @@ export default function WordPeek({ word, book, accent, voice = "female", onClose
         {loading && !data ? <span className="faint">查询中…</span> : data?.stopword ? <span className="faint">常用功能词，不提供学习资料</span> : (
           <>
             {data?.core && <div className="peek-core">{data.core}</div>}
+            {/* found / ground 这类本身是词条的变形：点到的是它自己，这一行指回原形（核心义里写了原形的不出这一行） */}
+            {data?.lemmaOf && (
+              <div className="peek-lemma">也是 <button type="button" className="peek-lemma-w" onClick={(e) => { e.stopPropagation(); router.push(`/word/${encodeURIComponent(data.lemmaOf!.base)}${book ? `?book=${book}` : ""}`, { scroll: false }); }}>{data.lemmaOf.base}</button> 的{data.lemmaOf.label}</div>
+            )}
             {data?.meanings?.length ? data.meanings.map((m, i) => (<div key={i}>{m.pos && <span className="pos">{m.pos}</span>}{m.defs.join("；")}</div>)) : !data?.core && <span className="faint">暂无资料</span>}
           </>
         )}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { parseExchange, inflectionOf, selectReason, mergeDictRows, parseTranslation, firstDef, firstDefParts, normalizePos, formatPhonetic, ipaBody, wordCreateData, hasRealPos, looksLikeName, rankBand, wordFreq, type DictRow } from "../src/lib/dict";
+import { candidateLemmas } from "../src/lib/lemma";
+import { parseExchange, inflectionOf, listsInflection, pickLemma, selectReason, mergeDictRows, parseTranslation, firstDef, firstDefParts, normalizePos, formatPhonetic, ipaBody, wordCreateData, hasRealPos, looksLikeName, rankBand, wordFreq, type DictRow } from "../src/lib/dict";
 
 const row = (p: Partial<DictRow> & { word: string }): DictRow => ({ spelling: p.word.toLowerCase(), phonetic: null, definition: null, translation: null, collins: null, oxford: false, tag: null, bnc: null, frq: null, exchange: null, ...p });
 
@@ -44,6 +45,47 @@ describe("词典解析", () => {
     expect(ipaBody("/ˈlæsi/")).toBe("ˈlæsi");
     expect(ipaBody(" /wɜːrld/ ")).toBe("wɜːrld");
     expect(ipaBody("əˈbændən")).toBe("əˈbændən");
+  });
+});
+
+describe("点到的变形对应哪个词条 pickLemma", () => {
+  // 一张小 word 表：拼写 → exchange
+  const table: Record<string, string> = {
+    plum: "s:plums", plume: "s:plumes/i:pluming/p:plumed/3:plumes/d:plumed", car: "s:cars", care: "s:cares/d:cared/p:cared/i:caring/3:cares",
+    notes: "0:note/1:s3", note: "s:notes", easy: "r:easier/t:easiest", man: "s:men", grind: "p:ground/d:ground", ground: "s:grounds",
+    take: "p:took/d:taken", fulfil: "d:fulfilled/p:fulfilled", fulfill: "d:fulfilled/p:fulfilled/s:fulfills", rat: "s:rats", rate: "s:rates",
+  };
+  const pick = (token: string, dictLemma?: string) =>
+    pickLemma(token, candidateLemmas(token), (s) => s in table, { dictLemma, exchangeOf: (s) => table[s] });
+
+  it("exchange 列不列某个变形", () => {
+    expect(listsInflection(table.plume, "plumes")).toBe(true);
+    expect(listsInflection(table.plum, "plumes")).toBe(false);
+    expect(listsInflection("0:note/1:s3", "note")).toBe(false);
+  });
+  it("去后缀有歧义时听 exchange：plumes 是 plume 不是 plum，cares / cared 是 care 不是 car", () => {
+    expect(candidateLemmas("plumes").indexOf("plum")).toBeLessThan(candidateLemmas("plumes").indexOf("plume"));
+    expect(pick("plumes", "plume")).toBe("plume");
+    expect(pick("plumes")).toBe("plume");
+    expect(pick("Plumes")).toBe("plume");
+    expect(pick("cares", "care")).toBe("care");
+    expect(pick("cared", "care")).toBe("care");
+    expect(pick("rates")).toBe("rate");
+  });
+  it("token 本身是词条就是它，不规则变形也一样（ground 不弹 grind）；不是词条的不规则变形照表还原", () => {
+    expect(pick("notes", "note")).toBe("notes");
+    expect(pick("ground", "grind")).toBe("ground");
+    expect(pick("took", "take")).toBe("take");
+  });
+  it("候选规则覆盖不到的靠词典写的原形；候选里有列出 token 的优先于词典（0: 常指英式拼写）", () => {
+    expect(pick("easier", "easy")).toBe("easy");
+    expect(pick("men", "man")).toBe("man");
+    expect(pick("fulfilled", "fulfil")).toBe("fulfill");
+  });
+  it("都没有线索时退回候选顺序；没有一个是词条返回 undefined", () => {
+    expect(pick("cars")).toBe("car");
+    expect(pick("zzzs")).toBeUndefined();
+    expect(pick("plumes", "nothing")).toBe("plume");
   });
 });
 

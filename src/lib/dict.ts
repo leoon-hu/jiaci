@@ -3,6 +3,7 @@
  * scripts/dict.ts 用它把 dict_entry 筛入 word 表；运行时用它把词典字段兜底成展示用的释义。
  */
 import { wordKind } from "./words";
+import { irregularLemma, lemmaBase } from "./lemma";
 
 /** 考试标签（ECDICT tag 列），按由易到难排序 */
 export const EXAM_TAGS = ["zk", "gk", "cet4", "cet6", "ky", "toefl", "ielts", "gre"] as const;
@@ -53,6 +54,37 @@ export function parseExchange(exchange: string | null | undefined): Record<strin
 export function inflectionOf(row: Pick<DictRow, "word" | "exchange">): string | null {
   const base = parseExchange(row.exchange)["0"];
   return base && base.toLowerCase() !== row.word.toLowerCase() ? base : null;
+}
+
+/** exchange 里有没有把 form 列成这个词的变形（复数 / 过去式 / 分词 / 三单 / 比较级 / 最高级；不看 0: 与 1:） */
+export function listsInflection(exchange: string | null | undefined, form: string): boolean {
+  return Object.entries(parseExchange(exchange)).some(([k, v]) => k !== "0" && k !== "1" && v.toLowerCase() === form);
+}
+
+/**
+ * 点到 / 链到的一个 token 对应 word 表里的哪个词条（点词小框、公开页内链共用）。
+ * cands 是 candidateLemmas(token)（可以再滤掉不合法的），has 判断 word 表里有没有，
+ * dictLemma 是词典里 token 自己那一行写的原形（exchange 的 0:），exchangeOf 取候选词条的 exchange。
+ * 规则去后缀的候选有歧义：plumes 去 -es 得 plum、去 -s 得 plume，cares / cared 都会先得 car，所以按顺序：
+ * token 本身是词条就是它（审计 F080）——不规则变形也一样：ground / wound / found 本身是词条、有自己的资料，
+ * 排成 grind / wind / find 在前的话 on the ground 会弹「磨碎」（它是谁的变形由点词小框的 lemmaHint 补一行）；
+ * 不规则变形不是词条的照表还原（went → go）；候选里 exchange 列出了 token 的（plume 的 s:plumes；plum 只列 plums）；
+ * 再是词典写的原形（补上候选规则覆盖不到的 easier → easy、men → man——不放在前一条前面，是因为 0: 常指英式拼写，
+ * fulfilled 会给 fulfil 而不是 fulfill）；都不行才取第一个是词条的候选。
+ */
+export function pickLemma(token: string, cands: string[], has: (spelling: string) => boolean, opts: { dictLemma?: string | null; exchangeOf?: (spelling: string) => string | null | undefined } = {}): string | undefined {
+  const t = lemmaBase(token);
+  if (has(t)) return t;
+  if (irregularLemma(t)) {
+    const hit = cands.find(has);
+    if (hit) return hit;
+  }
+  const listed = cands.filter(has);
+  const listing = listed.find((c) => listsInflection(opts.exchangeOf?.(c), t));
+  if (listing) return listing;
+  const base = opts.dictLemma?.toLowerCase();
+  if (base && base !== t && has(base)) return base;
+  return listed[0];
 }
 
 /** 是否带有「值得收录」的信号：考试标签 / 牛津 3000 / 柯林斯星级 */

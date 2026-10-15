@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { wordView, wordCore, inflectionsOf } from "../src/lib/word-view";
+import { wordView, wordCore, inflectionsOf, lemmaHint } from "../src/lib/word-view";
 import { AiMeaningsSchema, AiExamplesSchema, AiMistakesSchema, parseAi } from "../src/lib/ai/schema";
 
 const dict = { phonetic: "ә'bændәn", translation: "vt. 放弃, 抛弃, 遗弃\nn. 放任" };
@@ -66,5 +66,24 @@ describe("词条展示视图 wordView", () => {
     expect(parseAi(AiMeaningsSchema, [])).toBeNull();
     expect(parseAi(AiExamplesSchema, Array(6).fill({ en: "a b c", zh: "x" }))).toBeNull();
     expect(parseAi(AiMistakesSchema, [{ wrong: "a", right: "b" }])?.[0].note).toBe("");
+  });
+});
+
+describe("点词小框的原形提示 lemmaHint", () => {
+  it("词条本身是别的词的变形：给出原形与变形类型（按过去式、过去分词…的固定顺序）", () => {
+    expect(lemmaHint("found", "0:find/1:dp/d:founded/p:founded/i:founding/3:founds", "建立，创立（机构、组织、城市等）")).toEqual({ base: "find", label: "过去式 / 过去分词" });
+    expect(lemmaHint("better", "0:good/1:r/d:bettered/s:betters", "更好的；更好地；改善")).toEqual({ base: "good", label: "比较级" });
+    expect(lemmaHint("notes", "0:note/1:s3", null)).toEqual({ base: "note", label: "复数 / 第三人称单数" });
+    expect(lemmaHint("x", "0:y", "某义")).toEqual({ base: "y", label: "变形" });
+  });
+  it("核心义里已经写了原形就不重复；只按整词认（done 的核心义里有 do 开头的词不算）", () => {
+    expect(lemmaHint("left", "0:leave/1:dp/d:left/p:left", "左边的；左；leave 的过去式和过去分词")).toBeNull();
+    expect(lemmaHint("ground", "0:grind/1:dp", "地面；磨碎的（grind的过去式）")).toBeNull();
+    expect(lemmaHint("done", "0:do/1:d", "完成的；doing well")).toEqual({ base: "do", label: "过去分词" });
+  });
+  it("不是变形（没有 0: 或 0: 是自己）返回 null", () => {
+    expect(lemmaHint("plume", "s:plumes/i:pluming", "羽毛")).toBeNull();
+    expect(lemmaHint("clothes", "s:clothes/0:clothes/1:s", "衣服")).toBeNull();
+    expect(lemmaHint("people", null, "人们")).toBeNull();
   });
 });

@@ -54,6 +54,21 @@ export function inflectionsOf(spelling: string, exchange: string | null | undefi
   return Array.from(byForm, ([w, labels]) => ({ w, label: labels.join(" / ") }));
 }
 
+/**
+ * 点词小框的「也是 find 的过去式 / 过去分词」：词条本身是别的词的变形（exchange 有 0: 原形，found、ground、better）时给出原形与变形类型；
+ * 核心义里已经写了原形（left：…leave 的过去式和过去分词）就不重复。不是变形返回 null
+ */
+export function lemmaHint(spelling: string, exchange: string | null | undefined, core: string | null | undefined): { base: string; label: string } | null {
+  const ex = parseExchange(exchange);
+  const base = ex["0"]?.trim().toLowerCase();
+  if (!base || base === spelling.toLowerCase()) return null;
+  const esc = base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (core && new RegExp(`(^|[^a-z])${esc}([^a-z]|$)`, "i").test(core)) return null;
+  const types = ex["1"] ?? "";
+  const labels = ["p", "d", "i", "s", "3", "r", "t"].filter((k) => types.includes(k)).map((k) => EXCHANGE_LABEL[k]);
+  return { base, label: labels.length ? labels.join(" / ") : "变形" };
+}
+
 const text = (s: string | null | undefined) => (s && s.trim() ? s.trim() : null);
 
 export function wordView(dict: DictPart & { spelling?: string }, ai: AiInput | null | undefined, provider: AiProvider | null = null): WordView {

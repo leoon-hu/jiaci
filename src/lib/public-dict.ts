@@ -3,9 +3,10 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "./db";
 import { AI_PROVIDERS, aiDetailSelect, aiRelationOf, aiRowOf, isFullAiRow, type AiProvider } from "./ai/providers";
 import { wordCore, wordView, type WordView } from "./word-view";
-import { ipaBody, wordFreq, type WordFreq } from "./dict";
+import { ipaBody, pickLemma, wordFreq, type WordFreq } from "./dict";
+import { dictLemmas } from "./dict-db";
 import { isValidWord, normalizeWord, wordKind, type WordKind } from "./words";
-import { candidateLemmas, tokenize } from "./lemma";
+import { candidateLemmas, lemmaBase, tokenize } from "./lemma";
 import { bookByName, type PublicBook } from "./public-books";
 import { wordCategories } from "./categories-db";
 import type { WordCategory } from "./categories";
@@ -57,26 +58,35 @@ function englishTexts(v: WordView): string[] {
 
 /**
  * 内链表：正文里每个英文 token（含整条短语，如词族里的 give up）→ word 表里存在的拼写。
- * token 本身不在表里就试它的原形候选（abandoned → abandon），都没有就不链；本词自己也不链。
+ * token 本身不在表里就试它的原形（abandoned → abandon，挑法同点词小框的 pickLemma），都没有就不链；
+ * 本词自己也不链——本词页上的变形（plume 页的 plumes）也不链，不能因为本词被排除就退到 plum 去。
  */
 async function linkTable(headword: string, texts: string[]): Promise<Record<string, string>> {
+  const phrases = new Set<string>();
   const cands = new Map<string, string[]>();
   for (const text of texts) {
     const whole = normalizeWord(text);
-    if (whole.includes(" ") && isValidWord(whole) && !cands.has(whole)) cands.set(whole, [whole]);
+    if (whole.includes(" ") && isValidWord(whole)) phrases.add(whole);
     for (const t of tokenize(text)) {
       if (!t.word) continue;
       const base = t.text.toLowerCase();
       if (!cands.has(base)) cands.set(base, Array.from(new Set([base, ...candidateLemmas(base)])).filter(isValidWord));
     }
   }
+  phrases.delete(headword);
   cands.delete(headword);
-  const all = Array.from(new Set(Array.from(cands.values()).flat())).filter((s) => s !== headword);
-  if (!all.length) return {};
-  const rows = await prisma.word.findMany({ where: { spelling: { in: all } }, select: { spelling: true } });
-  const exists = new Set(rows.map((r) => r.spelling));
+  if (!phrases.size && !cands.size) return {};
+  const lemmas = await dictLemmas(Array.from(cands.keys(), lemmaBase));
+  const all = new Set([...phrases, ...Array.from(cands.values()).flat(), ...Array.from(lemmas.values()).filter(isValidWord)]);
+  const rows = await prisma.word.findMany({ where: { spelling: { in: Array.from(all) } }, select: { spelling: true, exchange: true } });
+  const exchange = new Map(rows.map((r) => [r.spelling, r.exchange]));
+  const has = (s: string) => exchange.has(s);
   const links: Record<string, string> = {};
-  for (const [token, list] of cands) { const hit = list.find((s) => exists.has(s)); if (hit) links[token] = hit; }
+  for (const p of phrases) if (has(p)) links[p] = p;
+  for (const [token, list] of cands) {
+    const hit = pickLemma(token, list, has, { dictLemma: lemmas.get(lemmaBase(token)), exchangeOf: (s) => exchange.get(s) });
+    if (hit && hit !== headword) links[token] = hit;
+  }
   return links;
 }
 
