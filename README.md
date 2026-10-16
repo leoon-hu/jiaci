@@ -71,7 +71,7 @@ src/lib/         领域逻辑：scheduler.ts 调度、status.ts 四色状态、s
                  client/ 浏览器端的请求、朗读与页面间通知
 src/app/         api/ 为 Route Handlers，(app)/ 为登录后页面（@detail 是单词详情浮层的平行路由），
                  page.tsx 是未登录看到的落地页，login/ 登录，legal/ 隐私政策与服务条款，
-                 robots.ts 只禁接口、sitemap 只列公开页，not-found.tsx 是全站 404，globals.css 是整套样式的源头
+                 robots.ts 只禁接口与 SEO 工具的爬虫、sitemap 只列公开页，not-found.tsx 是全站 404，globals.css 是整套样式的源头
 src/components/  共用组件（单词详情、打分栏、滑动 Tab、饼图、弹层、导航壳）
 scripts/         离线脚本：词典导入、内置词库构建、同类词构建、AI 字段填充、发音音频生成、内容数据同步、定期清理
 lists/           内置词库的词表文件（考试大纲、学术与通用核心词表、场景词表、排除表、补充词典）与同类词的分类词表
