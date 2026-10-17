@@ -45,6 +45,12 @@ describe("AI 填充校验", () => {
     const withDup = { ...good, mistakes: [{ wrong: "abandon to do", right: "abandon to do", note: "x" }, { wrong: "abandon to do", right: "abandon doing", note: "y" }] };
     const r2 = validateFill(withDup, w);
     expect(r2.ok && (r2.data.mistakes as unknown[]).length).toBe(1);
+    // 易混词 / 词族里的本词自己与重复的词去掉并记警告
+    const withSelf = { ...good, confusables: [{ w: "abandon", m: "本词，注意与以下区分" }, { w: "abundant", m: "丰富的" }, { w: "Abundant", m: "重复" }], family: [{ w: "abandon", pos: "v.", zh: "放弃" }, { w: "abandoned", pos: "adj.", zh: "被遗弃的" }] };
+    const rs = validateFill(withSelf, w);
+    expect(rs.ok && rs.data.confusables).toEqual([{ w: "abundant", m: "丰富的" }]);
+    expect(rs.ok && rs.data.family).toEqual([{ w: "abandoned", pos: "adj.", zh: "被遗弃的" }]);
+    expect(rs.ok && rs.warnings.filter((x) => x.includes("本词自己或重复"))).toHaveLength(2);
     // 词源：词根词缀写得太长时只保留来源，不整块丢掉；来源也不能用才置空
     const longPart = { ...good, etymology: { origin: "来自古英语 gietan，意为获得。", parts: [{ part: "ge-", meaning: "x".repeat(80) }] } };
     const r3 = validateFill(longPart, w);

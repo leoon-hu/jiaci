@@ -44,6 +44,16 @@ export type AiFamily = z.infer<typeof AiFamilySchema>;
 export type AiCognates = z.infer<typeof AiCognatesSchema>;
 export type AiEtymology = z.infer<typeof AiEtymologySchema>;
 
+/**
+ * 近义 / 反义 / 易混 / 词族 / 同根词这几块列的是「别的词」：去掉本词自己与重复的词（不分大小写，空白归一）。
+ * 模型常把本词写成第一条（「本词，注意与以下区分」），hut 的易混词曾是两条 hut；读出（wordView）与填充（validateFill）都过一遍
+ */
+export function otherWords<T extends { w: string }>(list: T[], headword: string): T[] {
+  const key = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+  const seen = new Set([key(headword)]);
+  return list.filter((x) => { const k = key(x.w); if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
 /** 按契约解析一个 JSONB 列的值；空或不合规返回 null */
 export function parseAi<S extends z.ZodTypeAny>(schema: S, value: unknown): z.infer<S> | null {
   if (value == null) return null;

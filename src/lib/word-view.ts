@@ -1,7 +1,7 @@
 import { firstDef, firstDefParts, formatPhonetic, normalizePos, parseExchange, parseTranslation } from "./dict";
 import {
   AiAntonymsSchema, AiCognatesSchema, AiCollocationsSchema, AiConfusablesSchema, AiEtymologySchema, AiExamplesSchema, AiFamilySchema, AiMeaningsSchema,
-  AiMistakesSchema, AiPatternsSchema, AiPhrasesSchema, AiSynonymsSchema, parseAi,
+  AiMistakesSchema, AiPatternsSchema, AiPhrasesSchema, AiSynonymsSchema, otherWords, parseAi,
   type AiAntonyms, type AiCognates, type AiConfusables, type AiEtymology, type AiExamples, type AiFamily, type AiMeanings, type AiMistakes, type AiPairs, type AiPatterns, type AiSynonyms,
 } from "./ai/schema";
 import type { AiProvider } from "./ai/providers";
@@ -78,6 +78,8 @@ export function wordView(dict: DictPart & { spelling?: string }, ai: AiInput | n
   const phonetic = aiUs || aiUk ? { us: aiUs ?? aiUk!, uk: aiUk ?? aiUs! } : dictPh ? { us: dictPh, uk: dictPh } : null;
   const aiMeanings = parseAi(AiMeaningsSchema, a.meanings);
   const dictMeanings = aiMeanings ? [] : parseTranslation(dict.translation).map((m) => ({ pos: normalizePos(m.pos), senses: m.defs.map((zh) => ({ zh })) }));
+  // 库里已有的资料里不少把本词列进了易混词 / 词族（填充时才开始滤），展示时再滤一遍
+  const others = <T extends { w: string }>(list: T[] | null) => otherWords(list ?? [], dict.spelling ?? "");
   const view: WordView = {
     provider: null,
     phonetic,
@@ -89,12 +91,12 @@ export function wordView(dict: DictPart & { spelling?: string }, ai: AiInput | n
     phrases: parseAi(AiPhrasesSchema, a.phrases) ?? [],
     patterns: parseAi(AiPatternsSchema, a.patterns) ?? [],
     usage: text(a.usage),
-    synonyms: parseAi(AiSynonymsSchema, a.synonyms) ?? [],
-    antonyms: parseAi(AiAntonymsSchema, a.antonyms) ?? [],
-    confusables: parseAi(AiConfusablesSchema, a.confusables) ?? [],
+    synonyms: others(parseAi(AiSynonymsSchema, a.synonyms)),
+    antonyms: others(parseAi(AiAntonymsSchema, a.antonyms)),
+    confusables: others(parseAi(AiConfusablesSchema, a.confusables)),
     mistakes: parseAi(AiMistakesSchema, a.mistakes) ?? [],
-    family: parseAi(AiFamilySchema, a.family) ?? [],
-    cognates: parseAi(AiCognatesSchema, a.cognates) ?? [],
+    family: others(parseAi(AiFamilySchema, a.family)),
+    cognates: others(parseAi(AiCognatesSchema, a.cognates)),
     mnemonic: text(a.mnemonic),
     etymology: parseAi(AiEtymologySchema, a.etymology),
     inflections: inflectionsOf(dict.spelling ?? "", dict.exchange),

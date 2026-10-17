@@ -5,7 +5,7 @@ import { candidateLemmas, tokenize } from "../lemma";
 import type { AiProvider } from "./providers";
 import {
   AiAntonymsSchema, AiCognatesSchema, AiCollocationsSchema, AiConfusablesSchema, AiEtymologySchema, AiExamplesSchema, AiFamilySchema, AiMeaningsSchema,
-  AiMistakesSchema, AiPatternsSchema, AiPhrasesSchema, AiSynonymsSchema, parseAi, type AiExamples, type AiMeanings,
+  AiMistakesSchema, AiPatternsSchema, AiPhrasesSchema, AiSynonymsSchema, otherWords, parseAi, type AiExamples, type AiMeanings,
 } from "./schema";
 
 /**
@@ -13,7 +13,7 @@ import {
  * 一次调用一个词，模型输出一个 JSON，按 lib/ai/schema.ts 契约校验后写入对应厂商的 word_ai_* 表。
  * 各厂商都走 OpenAI 兼容的 chat/completions 接口，密钥只从环境变量读。
  */
-export const PROMPT_VERSION = 4;
+export const PROMPT_VERSION = 5;
 
 export type ProviderApi = {
   baseUrl: string; envKey: string; defaultModel: string;
@@ -114,6 +114,7 @@ ${EXAMPLE_JSON}
 - mistakes：0–4 条中国学习者真会犯的错误（介词、时态、搭配、中式直译等），wrong 是错误说法，right 是对应的正确说法，两者必须不同，note 一句说明（不超过 50 字）；没有把握就给 []，不要凑数。
 - family：0–8 条派生词（词、词性、中文），不含 -s / -ed / -ing 这类规则变形。
 - cognates：0–6 条同词根的常见词（family 之外的，如 hypothesis → thesis、synthesis；spect → inspect、respect），词、词性、中文，优先给学习者常见的词；词根不透明时才给 []。
+- synonyms / antonyms / confusables / family / cognates 都只列别的词：不要把本词自己列进去，同一个词不要重复；没有合适的就少写或给 []。
 - mnemonic：一条助记，不超过 120 字：优先词根词缀或语义联想，其次画面，谐音只在前两者都不合适时用。
 - etymology：词源与构词，origin 一句话来源（不超过 80 字），parts 0–4 个词根词缀及含义（part 不超过 15 字，meaning 不超过 20 字）；构词不透明的词只给 origin、parts 给 []。
 - 短语（kind = phrase）：family、cognates 给 []，etymology 给 null，其余字段照常。
@@ -341,6 +342,11 @@ export function validateFill(raw: unknown, w: FillWordInput): { ok: true; data: 
   const norm = (s: string) => s.toLowerCase().replace(/[^a-z']+/g, " ").trim();
   const mistakesRaw = opt<Array<{ wrong: string; right: string; note: string }>>("mistakes", AiMistakesSchema, o.mistakes, []);
   const mistakes = mistakesRaw.filter((m) => { const same = norm(m.wrong) === norm(m.right); if (same) warnings.push(`常见错误的错误与正确写法相同，已去掉：${m.wrong}`); return !same; });
+  const others = <T extends { w: string }>(name: string, list: T[]): T[] => {
+    const kept = otherWords(list, w.spelling);
+    if (kept.length < list.length) warnings.push(`${name} 里有本词自己或重复的词，已去掉 ${list.length - kept.length} 条`);
+    return kept;
+  };
   const data: AiRowData = {
     phoneticUs: phon(o.phonetic_us), phoneticUk: phon(o.phonetic_uk), core, corePos: meanings[0].pos.trim() || null, meanings, examples,
     collocations: opt("collocations", AiCollocationsSchema, o.collocations, []),
@@ -349,12 +355,12 @@ export function validateFill(raw: unknown, w: FillWordInput): { ok: true; data: 
     patterns: opt<Array<{ en: string; zh: string; ex: { en: string; zh: string } }>>("patterns", AiPatternsSchema, o.patterns, [])
       .filter((pt) => { const ok = containsHeadword(pt.ex.en, w.spelling, w.exchange); if (!ok) warnings.push(`句型例句不含本词，已去掉：${pt.ex.en}`); return ok; }),
     usage: str(o.usage, 300),
-    synonyms: opt("synonyms", AiSynonymsSchema, o.synonyms, []),
-    antonyms: opt("antonyms", AiAntonymsSchema, o.antonyms, []),
-    confusables: opt("confusables", AiConfusablesSchema, o.confusables, []),
+    synonyms: others("synonyms", opt<Array<{ w: string; m: string }>>("synonyms", AiSynonymsSchema, o.synonyms, [])),
+    antonyms: others("antonyms", opt<Array<{ w: string; m: string }>>("antonyms", AiAntonymsSchema, o.antonyms, [])),
+    confusables: others("confusables", opt<Array<{ w: string; m: string }>>("confusables", AiConfusablesSchema, o.confusables, [])),
     mistakes,
-    family: phrase ? [] : opt("family", AiFamilySchema, o.family, []),
-    cognates: phrase ? [] : opt("cognates", AiCognatesSchema, o.cognates, []),
+    family: phrase ? [] : others("family", opt<Array<{ w: string; pos: string; zh: string }>>("family", AiFamilySchema, o.family, [])),
+    cognates: phrase ? [] : others("cognates", opt<Array<{ w: string; pos: string; zh: string }>>("cognates", AiCognatesSchema, o.cognates, [])),
     mnemonic: str(o.mnemonic, 240),
     etymology: phrase ? null : etymologyOf(o.etymology),
   };

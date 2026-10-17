@@ -49,6 +49,24 @@ describe("词条展示视图 wordView", () => {
     expect(v.meaningsSource).toBe("dict");
     expect(v.collocations).toHaveLength(1);
   });
+  it("近义 / 反义 / 易混 / 词族 / 同根词去掉本词自己与重复的词", () => {
+    const hut = {
+      ...abandon,
+      synonyms: [{ w: "cabin", m: "木屋" }, { w: "Cabin ", m: "重复" }, { w: "shed", m: "棚子" }],
+      antonyms: [{ w: "hut", m: "本词" }],
+      confusables: [{ w: "hut", m: "小屋；hut与hut同音，注意拼写" }, { w: "hut", m: "小屋；hut与hut同音，注意拼写" }],
+      family: [{ w: "hut", pos: "n.", zh: "小屋" }, { w: "hutment", pos: "n.", zh: "临时营房" }],
+      cognates: [{ w: " HUT", pos: "n.", zh: "小屋" }],
+    };
+    const v = wordView({ ...dict, spelling: "hut" }, hut, "deepseek");
+    expect(v.synonyms.map((s) => s.w)).toEqual(["cabin", "shed"]);
+    expect(v.antonyms).toEqual([]);
+    expect(v.confusables).toEqual([]);
+    expect(v.family.map((f) => f.w)).toEqual(["hutment"]);
+    expect(v.cognates).toEqual([]);
+    // 短语按空白归一比对
+    expect(wordView({ ...dict, spelling: "give up" }, { ...abandon, synonyms: [{ w: "give  up", m: "x" }, { w: "quit", m: "y" }] }).synonyms.map((s) => s.w)).toEqual(["quit"]);
+  });
   it("词形变化来自词典 exchange，同一形式合并标签，变形词条列原形", () => {
     expect(inflectionsOf("abandon", "d:abandoned/p:abandoned/i:abandoning/3:abandons")).toEqual([{ w: "abandoned", label: "过去式 / 过去分词" }, { w: "abandoning", label: "现在分词" }, { w: "abandons", label: "第三人称单数" }]);
     expect(inflectionsOf("abandoned", "0:abandon/1:dp/p:abandoned/d:abandoned")).toEqual([{ w: "abandon", label: "原形" }]);
