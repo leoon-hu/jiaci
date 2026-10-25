@@ -11,7 +11,7 @@ import { useSyncExternalStore } from "react";
 import { audioUrl, setExclusivePlayer, stopSpeaking, type VoiceKey } from "./speech";
 import { buildRunPlan, clampExamples, cueIndexAt, frameCount, FRAME_BYTES, isRunClip, SILENCE_FRAME, type RunClipKind, type RunCue, type RunEcho, type RunPlanOptions } from "@/lib/run-plan";
 
-export type RunWord = { wordId: string; spelling: string; display: string | null; kind: "review" | "new" | "done"; phonetic: { us: string; uk: string } | null; def: string | null; examples: Array<{ en: string; zh: string }> };
+export type RunWord = { wordId: string; spelling: string; display: string | null; kind: "review" | "new" | "done"; phonetic: { us: string; uk: string } | null; def: string | null; pos: string; examples: Array<{ en: string; zh: string }> };
 export type RunOptions = RunPlanOptions & { speed: number };
 export type RunStatus = "idle" | "preparing" | "ready" | "playing" | "paused" | "error";
 export type RunState = {
@@ -157,7 +157,7 @@ function updateMetadata() {
   if (!w) { navigator.mediaSession.metadata = null; return; }
   navigator.mediaSession.metadata = new MediaMetadata({
     title: w.display ?? w.spelling,
-    artist: w.def ?? w.phonetic?.us ?? "",
+    artist: w.def ? (w.pos ? `${w.pos} ${w.def}` : w.def) : w.phonetic?.us ?? "",
     album: `AI加词 · 跑步模式 ${state.pos} / ${state.playable}`,
     artwork: [{ src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" }],
   });

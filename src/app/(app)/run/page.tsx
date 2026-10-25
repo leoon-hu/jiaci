@@ -184,7 +184,7 @@ export default function RunPage() {
             <div className={"run-word" + wordSize(cur.display ?? cur.spelling)}>{cur.display ?? cur.spelling}</div>
             {st.echo && st.echo.word === st.index && <span className="run-echo" title="这遍读完后再读两遍"><IconRepeat />×{st.echo.copies - 1}</span>}
           </div>
-          {settings.runDef && cur.def && <div className="run-def">{cur.def}</div>}
+          {settings.runDef && cur.def && <div className="run-def">{cur.pos && <i className="pos">{cur.pos}</i>}{cur.def}</div>}
           {settings.runSentence !== "off" && cur.examples.length > 0 && (
             // 例句里每个词可点（WordTokens 的 .w），本词及其变形 .hw 高亮
             <PickCtx.Provider value={onPick}>
@@ -243,7 +243,7 @@ export default function RunPage() {
               const gone = st.dropped.includes(i);
               return (
                 <div key={w.wordId} className={"row link" + (i === st.index ? " current" : "") + (gone ? " dropped" : "")} onClick={() => { if (!gone && (active || st.status === "ready")) jumpTo(i); }}>
-                  <div className="main"><div className="title">{w.display ?? w.spelling}</div><div className="sub">{w.def ?? "—"}</div></div>
+                  <div className="main"><div className="title">{w.display ?? w.spelling}</div><div className="sub">{w.pos && <i className="pos">{w.pos}</i>}{w.def ?? "—"}</div></div>
                   <span className={gone ? "tag tag-none" : `tag ${KIND_TAG[w.kind][0]}`}>{gone ? "本次不播" : KIND_TAG[w.kind][1]}</span>
                 </div>
               );

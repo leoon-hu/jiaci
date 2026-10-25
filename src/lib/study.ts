@@ -416,6 +416,8 @@ export type RunWord = {
   phonetic: { us: string; uk: string } | null;
   /** 中文核心义：口径与单词列表行、列表小喇叭读的释义一致（wordCore），也就是登记过音频的那句 */
   def: string | null;
+  /** 核心义的词性（n. / v. / adj. …，已归一；没有是空串），页面显示用，不进音频 */
+  pos: string;
   /** 前 RUN_MAX_EXAMPLES 条例句（固定按 examples 原顺序取，不像详情页那样随机打乱），带中文译文；页面按设置再取前几条 */
   examples: Array<{ en: string; zh: string }>;
 };
@@ -446,7 +448,8 @@ export async function buildRunList(userId: string, today: string, limit?: number
     if (!w) continue;
     const p = pickAi<AiRunRow>(w, q.settings.aiProvider);
     const v = wordView(w, p?.row, p?.provider ?? null);
-    words.push({ wordId: w.id, spelling: w.spelling, display: w.display, kind: kinds.get(id)!, phonetic: v.phonetic, def: wordCore(w, p?.row).def, examples: v.examples.slice(0, RUN_MAX_EXAMPLES).map((e) => ({ en: e.en, zh: e.zh })) });
+    const core = wordCore(w, p?.row);
+    words.push({ wordId: w.id, spelling: w.spelling, display: w.display, kind: kinds.get(id)!, phonetic: v.phonetic, def: core.def, pos: core.pos, examples: v.examples.slice(0, RUN_MAX_EXAMPLES).map((e) => ({ en: e.en, zh: e.zh })) });
   }
   // bookId：这批词属于哪本词库，跑步页里的加进度 / 已掌握打分时带上（与学习页同一个道理：离线补交时当前词库可能已换）
   return { words, total: ids.length, hasBook: true, bookId: q.bookId };

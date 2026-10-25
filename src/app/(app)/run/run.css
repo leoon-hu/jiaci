@@ -28,6 +28,9 @@
 .run-word.long{font-size:52px}
 .run-word.longer{font-size:42px}
 .run-def{font-size:26px;font-weight:600;line-height:1.4;max-width:640px}
+/* 词性：与单词列表行同一样式（全局 .pos 主色斜体），释义前面、小一号 */
+.run-def .pos{min-width:0;margin-right:8px;font-size:.8em}
+.run-list .sub .pos{min-width:0;margin-right:5px}
 .run-examples{display:flex;flex-direction:column;gap:14px;width:100%;max-width:640px;margin-top:8px}
 /* 例句字号 2026-10-14 放大约 1.2 倍（原来 22 / 18px，手机 19 / 16px）；不高亮正在读的句子（做过又取消了） */
 .run-example .en{font-size:26px;line-height:1.45;font-weight:500}

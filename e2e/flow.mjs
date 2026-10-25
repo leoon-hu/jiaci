@@ -549,7 +549,9 @@ log.push(`详情：apple 的同类词在关联词 Tab（释义 Tab 里没有 ${!
   log.push(`跑步：首屏例句 ${exN} 条 ${exN === 2 ? "✓" : "✗"}，都有中文 ${exZh ? "✓" : "✗"}，本词高亮「${exHw}」 ${exHw && exHw.split(",").every((t) => t.startsWith((w0 ?? "").toLowerCase().slice(0, 4))) ? "✓" : "✗"}；圆形按钮在底部正中 ${fab && Math.abs(fab.x + fab.w / 2 - 195) < 2 && fab.y + fab.h > 844 - 40 ? "✓" : "✗ " + JSON.stringify(fab)}、直径 ${fab?.w}px ${fab?.w >= 56 ? "✓" : "✗"}、不压住提示行 ${fabClear ? "✓" : "✗"}；正文块高 ${heroH}px ${heroH >= 844 - 56 - 2 ? "✓" : "✗"}`);
   // 标签与单词同一行、没有音标
   const tagInline = await evalJs("!!document.querySelector('.run-word-line .tag') && !document.querySelector('.run-phonetic')");
-  log.push(`跑步：标签与单词同一行、无音标 ${tagInline ? "✓" : "✗"}`);
+  const defPos = await evalJs("document.querySelector('.run-def .pos')?.textContent");
+  const rowPos = await evalJs("[...document.querySelectorAll('.run-list .row .sub .pos')].length");
+  log.push(`跑步：标签与单词同一行、无音标 ${tagInline ? "✓" : "✗"}；释义带词性「${defPos}」 ${/^[a-z]+\.$/.test(defPos ?? "") ? "✓" : "✗"}，今日词表 ${rowPos} 行带词性 ${rowPos >= 1 ? "✓" : "✗"}`);
   // 例句里点词：弹出与详情页同一个点词小框（在圆形按钮上方），点小框进单词详情浮层，返回后播放页还在、仍在播
   const picked = await evalJs("(()=>{const w=[...document.querySelectorAll('.run-example .en .w')].find(w=>!w.classList.contains('hw')&&w.textContent.length>=4); if(!w) return null; w.click(); return w.dataset.w})()");
   const peekUp = await waitFor("document.querySelector('.peek .peek-word')?.textContent && !document.querySelector('.peek .faint')", 6000);
