@@ -11,12 +11,19 @@
 .run-progress{width:100%;max-width:360px}
 .run-start,.run-prepare{max-width:360px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
 .run-start svg{width:20px;height:20px}
-/* 播放中：正文与按钮撑满首屏（顶栏以下一整屏），正文垂直居中（2026-10-14 用户定，试过靠上排又改回来）、按钮贴底；跑步 / 骑行时看一眼就能看清、伸手就能按到 */
+/* 播放中：正文撑满首屏（顶栏以下一整屏），正文垂直居中（2026-10-14 用户定，试过靠上排又改回来）、提示贴底；跑步 / 骑行时看一眼就能看清 */
 .run-hero.now{min-height:calc(100dvh - var(--run-top-h));justify-content:space-between;gap:16px;padding:12px 0 calc(12px + env(safe-area-inset-bottom))}
+/* 圆形操作按钮悬浮在下方 / 上方（设置「操作按钮位置」），正文给它留出位置、不被遮住；往下滚到词表时页面底部也留出来 */
+.run-hero.now.ctl-bottom{padding-bottom:calc(100px + env(safe-area-inset-bottom))}
+.run-hero.now.ctl-top{padding-top:92px}
+.run-page.ctl-bottom{padding-bottom:calc(120px + env(safe-area-inset-bottom))}
 .run-now{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;width:100%}
 /* 标签与单词同一行：标签靠左、不压缩，长词在自己那一栏里换行 */
 .run-word-line{display:flex;align-items:center;justify-content:center;gap:12px;width:100%}
 .run-word-line .tag{flex:none;font-size:13px;padding:3px 10px}
+/* 安排了重放：单词右边一个小标记「↻ ×2」，读完自动消失 */
+.run-echo{flex:none;display:inline-flex;align-items:center;gap:4px;font-size:13px;font-weight:700;padding:3px 10px;border-radius:999px;background:var(--primary-soft);color:var(--primary);font-variant-numeric:tabular-nums}
+.run-echo svg{width:14px;height:14px}
 .run-word{min-width:0;font-size:64px;font-weight:800;letter-spacing:.3px;line-height:1.1;word-break:break-word;overflow-wrap:anywhere}
 .run-word.long{font-size:52px}
 .run-word.longer{font-size:42px}
@@ -29,19 +36,41 @@
 .run-example mark.hw{background:none;color:var(--primary);font-weight:800;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .run-bottom{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
 .run-hint{min-height:1.6em}
-/* 四个按钮并排：上一个 / 暂停或继续 / 停止 / 下一个，等宽铺满，大到隔着汗水手套也按得准 */
-.run-controls{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;width:100%;max-width:640px}
-.run-ctl{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:84px;padding:8px 4px;border:1px solid var(--border-strong);border-radius:18px;background:var(--card);color:var(--text);font-size:14px;font-weight:600;cursor:pointer;transition:background .15s,transform .05s;-webkit-tap-highlight-color:transparent}
-.run-ctl svg{width:32px;height:32px}
-.run-ctl:hover{background:var(--bg)}
-.run-ctl:active{transform:scale(.96)}
-.run-ctl.main{background:var(--primary);border-color:var(--primary);color:#fff}
-.run-ctl.main:hover{background:var(--primary-strong)}
-.run-ctl.stop{background:var(--danger-soft);border-color:transparent;color:var(--danger)}
+/*
+ * 操作按钮（2026-10-25 改版，之前是四个并排的大按钮）：一个 64px 的圆形主色按钮悬浮在屏幕正中偏下（.bottom）或顶栏下面（.top），
+ * 点开一列竖排的大按钮（.run-menu，底部的向上展开、顶部的向下展开）+ 半透明遮罩。都 portal 在 body 上，所以 z-index 直接与
+ * 全局的层比：toast 80、弹窗 70（停止确认要盖住它们）、本页顶栏 10。暂停时按钮换成白底描边，一眼看出没在播。
+ * 菜单用 left/right + margin auto 居中、不用 transform：popup 动画的结束帧是 transform:none，会把 translateX(-50%) 顶掉（先偏右再跳回正中）
+ */
+.run-fab{position:fixed;left:50%;transform:translateX(-50%);z-index:45;width:64px;height:64px;border-radius:50%;border:2px solid var(--primary);background:var(--primary);color:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 8px 24px rgba(79,109,245,.35);transition:background .15s,color .15s,transform .05s;-webkit-tap-highlight-color:transparent}
+.run-fab svg{width:30px;height:30px}
+.run-fab:hover{background:var(--primary-strong);border-color:var(--primary-strong)}
+.run-fab:active{transform:translateX(-50%) scale(.94)}
+.run-fab.bottom{bottom:calc(20px + env(safe-area-inset-bottom))}
+.run-fab.top{top:68px}
+.run-fab[data-state="paused"],.run-fab.open{background:var(--card);border-color:var(--border-strong);color:var(--text);box-shadow:var(--shadow-lg)}
+.run-fab[data-state="paused"]:hover,.run-fab.open:hover{background:var(--bg)}
+.run-menu-backdrop{position:fixed;inset:0;z-index:44;background:rgba(10,12,18,.35);touch-action:none;animation:fade .15s}
+.run-menu{position:fixed;left:16px;right:16px;margin:0 auto;width:min(340px,calc(100vw - 32px));max-height:calc(100dvh - 190px);overflow-y:auto;display:flex;flex-direction:column;gap:2px;padding:8px;background:var(--card);border:1px solid var(--border);border-radius:22px;box-shadow:var(--shadow-lg);animation:popup .16s ease-out;box-sizing:border-box}
+.run-menu.bottom{bottom:calc(98px + env(safe-area-inset-bottom))}
+.run-menu.top{top:146px}
+.run-menu-sep{border:0;border-top:1px solid var(--border);margin:4px 10px;width:auto}
+.run-mi{display:flex;align-items:center;gap:14px;min-height:56px;padding:8px 14px;border:0;border-radius:14px;background:transparent;color:var(--text);font:inherit;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.run-mi:hover,.run-mi:focus-visible{background:var(--bg)}
+.run-mi:active{background:var(--primary-soft)}
+.run-mi svg{flex:none;width:26px;height:26px}
+.run-mi .t{display:flex;flex-direction:column;gap:2px;min-width:0}
+.run-mi .t b{font-size:17px;font-weight:700;line-height:1.3}
+.run-mi .t small{font-size:12.5px;color:var(--muted);line-height:1.35}
+.run-mi.danger{color:var(--danger)}
+.run-mi.danger:active{background:var(--danger-soft)}
 .run-page .row.setting{gap:14px}
 .run-page .row.setting .ctl{flex:none;display:flex;align-items:center;gap:8px}
 .run-list .row.current{background:var(--primary-soft)}
 .run-list .row.current .title{color:var(--primary)}
+/* 加进度 / 已掌握去掉的词：变灰划掉，标「本次不播」 */
+.run-list .row.dropped{opacity:.55;cursor:default}
+.run-list .row.dropped .title{text-decoration:line-through}
 @media (max-width:767px){
   .run-page{padding:0 12px 40px}
   .run-hero{min-height:260px}
@@ -51,9 +80,6 @@
   .run-def{font-size:22px}
   .run-example .en{font-size:23px}
   .run-example .zh{font-size:19px}
-  .run-controls{gap:8px}
-  .run-ctl{min-height:80px;font-size:13px;border-radius:16px}
-  .run-ctl svg{width:28px;height:28px}
   /* 设置行的选项条一行放不下时（读例句、间隔、语速）换到下一行靠右，标题不被挤成两行 */
   .run-page .row.setting{flex-wrap:wrap}
   .run-page .row.setting .main{flex:1 1 auto}

@@ -10,11 +10,16 @@ import { candidateLemmas, lemmaBase, tokenize } from "./lemma";
 import { bookByName, type PublicBook } from "./public-books";
 import { wordCategories } from "./categories-db";
 import type { WordCategory } from "./categories";
+import { getConfigInt } from "./config";
+import { siteUrl } from "./site";
+import { brandExample, pickBrandWords, type BrandMark } from "./brand";
+import { lockedOf, withoutLocked, type LockedBlocks } from "./locked";
 
 /**
  * 公开词条页 / 词库页（/dict/…，匿名可看，供搜索引擎收录）的取数。
  * 只公开 word 表（AI 资料几乎全覆盖），不查 dict_entry——77 万行词典原文页面薄、量大，只会拖累收录；
  * 资料固定取 AI_PROVIDERS[0]（用户设置里的「来源」是登录后的事），没有的词用词典字段兜底。
+ * 助记 / 词源与构词 / 易混词 / 常见错误四块登录后才看（需求 3.7 P13），取数时就去掉，只留各有几条。
  * 这里的函数都不碰 cookies / headers，页面才能走 ISR（每天再生成一次）。
  */
 export const PUBLIC_AI: AiProvider = AI_PROVIDERS[0];
@@ -36,7 +41,32 @@ export type PublicWord = {
   links: Record<string, string>;
   /** AI 资料生成时间（sitemap 的 lastmod） */
   updatedAt: Date | null;
+  /** 来源标注（需求 3.7 P12）：名单里的词在一条例句的译文后面带一处，不在名单里是 null */
+  brand: BrandMark | null;
+  /** 登录后才看的四块各有几条（需求 3.7 P13）；内容本身不在 view 里，页面只拿它画「登录后可看」卡片 */
+  locked: LockedBlocks;
 };
+
+/**
+ * 带来源标注的词（需求 3.7 P12）：名单要拿全部拼写排一次序，每个进程一天算一次；`public.brand_words` 改了马上重算。
+ * 查库失败这次就不标、下次请求再算，不让词条页因为它出错
+ */
+const BRAND_TTL_MS = 86_400_000;
+let brandCache: { at: number; max: number; words: Promise<Set<string>> } | null = null;
+async function brandWords(): Promise<Set<string>> {
+  const max = await getConfigInt("public.brand_words", 0);
+  if (brandCache && brandCache.max === max && Date.now() - brandCache.at < BRAND_TTL_MS) return brandCache.words;
+  const words: Promise<Set<string>> = (max > 0
+    ? prisma.word.findMany({ select: { spelling: true } }).then((rows) => pickBrandWords(rows.map((r) => r.spelling), max))
+    : Promise.resolve(new Set<string>())
+  ).catch((e) => {
+    console.warn("[public] 来源标注的名单没算出来，这次不标:", (e as Error).message);
+    if (brandCache?.words === words) brandCache = null;
+    return new Set<string>();
+  });
+  brandCache = { at: Date.now(), max, words };
+  return words;
+}
 
 /** 正文里所有英文文本，用来找可内链的词 */
 function englishTexts(v: WordView): string[] {
@@ -98,16 +128,21 @@ export const loadPublicWord = cache(async (spelling: string): Promise<PublicWord
   const ai = isFullAiRow(row) ? row : null;
   const raw = wordView(word, ai, PUBLIC_AI);
   // 音标去掉斜杠（页面用 CSS 画）：公开页的数据里不出现「/ˈlæsi/」这种会被搜索引擎当路径去抓的字符串
-  const view: WordView = raw.phonetic ? { ...raw, phonetic: { us: ipaBody(raw.phonetic.us), uk: ipaBody(raw.phonetic.uk) } } : raw;
-  const [memberships, links, categories] = await Promise.all([
+  const full: WordView = raw.phonetic ? { ...raw, phonetic: { us: ipaBody(raw.phonetic.us), uk: ipaBody(raw.phonetic.uk) } } : raw;
+  // 登录后才看的四块在这里就去掉（需求 3.7 P13）：页面的 HTML 与内嵌数据里都不能有，内链表也不必为它们查词
+  const locked = lockedOf(full);
+  const view = withoutLocked(full);
+  const [memberships, links, categories, branded] = await Promise.all([
     prisma.wordbookWord.findMany({ where: { wordId: word.id, wordbook: { type: "builtin" } }, select: { wordbook: { select: { name: true, sortOrder: true } } }, orderBy: { wordbook: { sortOrder: "asc" } } }),
     linkTable(spelling, englishTexts(view)),
     wordCategories(word.id, PUBLIC_AI),
+    brandWords(),
   ]);
   // 同类词的成员本来就都在 word 表里，直接进内链表，不用再查一遍
   for (const c of categories) for (const w of c.words) links[w.spelling] = w.spelling;
   const books = memberships.map((m) => bookByName(m.wordbook.name)).filter((b): b is PublicBook => !!b);
-  return { id: word.id, spelling, display: word.display, kind: wordKind(spelling), view, freq: wordFreq(word), books, categories, links, updatedAt: ai?.generatedAt ?? null };
+  const brand = branded.has(spelling) ? brandExample(spelling, view.examples, new URL(siteUrl()).host) : null;
+  return { id: word.id, spelling, display: word.display, kind: wordKind(spelling), view, freq: wordFreq(word), books, categories, links, updatedAt: ai?.generatedAt ?? null, brand, locked };
 });
 
 /** phonetic 不带斜杠（见 loadPublicWord） */

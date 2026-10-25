@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { findWordOrDict } from "@/lib/dict-db";
-import { buildWordDetail, type WordDetail } from "@/lib/study";
+import { applyDetailQuota, buildWordDetail, type WordDetail } from "@/lib/study";
 import { isValidWord, normalizeWord } from "@/lib/words";
 import { DATE_COOKIE, resolveToday } from "@/lib/dates";
 
@@ -20,5 +20,5 @@ export async function loadWord(raw: string, book?: string | null): Promise<{ spe
   if (!word) return { spelling, initial: null, initialError: "词典里没有收录这个词" };
   // 打分按钮上的天数按客户端本地日期算（审计 F026）；Cookie 里没有就用服务器日期
   const today = resolveToday((await cookies()).get(DATE_COOKIE)?.value);
-  return { spelling, initial: await buildWordDetail(user.id, word, today, book || null), initialError: "" };
+  return { spelling, initial: await applyDetailQuota(user, await buildWordDetail(user.id, word, today, book || null)), initialError: "" };
 }

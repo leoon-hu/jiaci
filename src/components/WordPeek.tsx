@@ -24,7 +24,7 @@ export default function WordPeek({ word, book, accent, voice = "female", onClose
     let alive = true;
     setLoading(true);
     // 等查到原形再发音：直接读点到的变形会念错，还会为每个变形触发一次按需合成（审计 NU07）
-    api<Peek>(`/api/words/peek?w=${encodeURIComponent(word)}${book ? `&book=${book}` : ""}`)
+    api<Peek>(`/api/peek?w=${encodeURIComponent(word)}${book ? `&book=${book}` : ""}`)
       .then((d) => { if (!alive) return; setData(d); if (autoSpeak && !d.stopword) speakWord(d.spelling, vk); })
       .catch(() => { if (alive) setData(null); })
       .finally(() => alive && setLoading(false));

@@ -32,7 +32,7 @@ enum ProgressStatus {
   removed
 }
 
-/// 打分来源：study 学习卡片 / list 单词列表的批量操作；「今日已完成」只算 study
+/// 打分来源：study 学习卡片 / list 单词列表的操作与跑步模式里的加进度、已掌握；「今日已完成」只算 study
 enum StudySource {
   study
   list
@@ -483,7 +483,7 @@ model StudyLog {
   result       StudyResult
   /// 打分后的下次间隔（天）：0 = 今日再出现，-1 = 不再出现
   nextInterval Int         @default(0) @map("next_interval")
-  /// 来源：study 学习卡片 / list 单词列表的批量操作
+  /// 来源：study 学习卡片 / list 单词列表的操作与跑步模式里的加进度、已掌握
   source       StudySource @default(study)
   /// 客户端提交标识，用于离线重试时去重（同一用户内唯一）
   clientTs     String?     @map("client_ts")

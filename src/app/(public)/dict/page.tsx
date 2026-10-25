@@ -8,7 +8,7 @@ const fmt = (n: number) => n.toLocaleString("zh-CN");
 
 export const metadata: Metadata = {
   title: "英语词典与词汇表：中高考、四六级、考研、托福、雅思、GRE",
-  description: "AI加词的公开词典：2.8 万个单词与短语的释义、例句、搭配、辨析、词族与词源，21 本内置词库——高频核心、考试大纲、学术词汇、常用短语与海外生活场景词汇表，无需登录即可查阅。",
+  description: "AI加词的公开词典：2.8 万个单词与短语的释义、例句、搭配、近反义辨析与词族，21 本内置词库——高频核心、考试大纲、学术词汇、常用短语与海外生活场景词汇表，无需登录即可查阅。",
   alternates: { canonical: "/dict" },
 };
 
@@ -24,7 +24,7 @@ export default async function DictIndex() {
   const byName = new Map(books.map((b) => [b.name, b]));
   return (
     <div className="pub-index">
-      <header className="page-head"><div><h1 className="page-title">词典与词汇表</h1><p className="page-sub">每个词条有核心义、释义、例句、搭配、句型、近反义辨析、词族、助记与词源，AI 生成、人可读、无需登录。从词库进入，或直接打开 <code>/dict/单词</code>。</p></div></header>
+      <header className="page-head"><div><h1 className="page-title">词典与词汇表</h1><p className="page-sub">每个词条有核心义、释义、例句、搭配、句型、近反义辨析与词族，AI 生成、人可读、无需登录；助记、词源与构词、易混词、常见错误登录后可看。从词库进入，或直接打开 <code>/dict/单词</code>。</p></div></header>
       {groups.map(([title, names]) => {
         const list = names.map((n) => byName.get(n)).filter((b): b is NonNullable<typeof b> => !!b);
         if (!list.length) return null;

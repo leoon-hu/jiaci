@@ -1,19 +1,21 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { IconNext, IconPause, IconPlay, IconPrev, IconStop, IconX } from "@/components/Icons";
+import { IconPlay, IconRepeat, IconX } from "@/components/Icons";
+import RunControls, { type RunAct } from "@/components/RunControls";
 import RunStopConfirm from "@/components/RunStopConfirm";
 import { useToast } from "@/components/Toast";
 import { api, localToday } from "@/lib/client/api";
+import { flushPendingRates, isRetriableRateError, stashPendingRate } from "@/lib/client/pending-rates";
 import { useMe } from "@/lib/client/useMe";
 import { voiceKeyOf } from "@/lib/client/speech";
-import { applyOptions, jumpTo, next, pause, play, prepare, prev, useRunPlayer, type RunOptions, type RunWord } from "@/lib/client/run-player";
+import { applyOptions, dropWord, jumpTo, next, pause, play, prepare, prev, replayCurrent, useRunPlayer, type RunOptions, type RunWord } from "@/lib/client/run-player";
 import { useScreenWakeLock, useWakeLockSupported } from "@/lib/client/wake-lock";
 import { isHeadwordToken, tokenize } from "@/lib/lemma";
 import type { UserSettings } from "@/lib/settings";
 import "./run.css";
 
-type RunResp = { words: RunWord[]; total: number; hasBook: boolean };
+type RunResp = { words: RunWord[]; total: number; hasBook: boolean; bookId: string | null };
 const KIND_TAG: Record<RunWord["kind"], [string, string]> = { review: ["tag-review", "复习"], new: ["tag-new", "新词"], done: ["tag-result-know", "今日已学"] };
 const SPEEDS = [0.8, 0.9, 1, 1.1, 1.2];
 const WORD_COUNTS = [30, 50, 100, 150] as const;
@@ -41,7 +43,8 @@ const wordSize = (s: string) => (s.length > 14 ? " longer" : s.length > 10 ? " l
  * 这个页面只负责取今天的内容、把设置交给它、画它的状态；离开页面不停，主框架的小条可以回来。
  */
 export default function RunPage() {
-  const { settings, update } = useMe();
+  const { me, settings, update } = useMe();
+  const userId = me?.id;
   const st = useRunPlayer();
   const { toast } = useToast();
   const [data, setData] = useState<RunResp | null>(null);
@@ -56,6 +59,8 @@ export default function RunPage() {
   useEffect(() => { fetchRun(settings.runWords).then(setData).catch((e) => setLoadErr((e as Error).message)); }, [settings.runWords]);
   // iOS 上的微信 / 内嵌浏览器不保证后台播放，提示用 Safari 打开
   useEffect(() => { const ua = navigator.userAgent; setEmbedded(/iPhone|iPad/.test(ua) && /MicroMessenger|FBAN|FBAV|Instagram|Line\/|Weibo|QQ\//i.test(ua)); }, []);
+  // 上次跑步中没网时暂存的加进度 / 已掌握：回到这页就补交（学习页进页面也会补）
+  useEffect(() => { if (userId) flushPendingRates(userId); }, [userId]);
 
   // 播放器里的词是不是今天这批：按集合比、不看顺序——接口每次返回的顺序不稳定（混合 / 随机顺序会洗牌，
   // 同日到期的复习词先后也不固定），开发环境 StrictMode 还会把挂载请求跑两遍，按顺序比会把同一批词当成「有更新」
@@ -69,7 +74,7 @@ export default function RunPage() {
     try {
       const r = await fetchRun(settings.runWords);
       setData(r);
-      if (r.words.length) prepare(r.words, optionsOf(settings), voiceKeyOf(settings.accent, settings.voice));
+      if (r.words.length) prepare(r.words, optionsOf(settings), voiceKeyOf(settings.accent, settings.voice), r.bookId);
     } catch (e) { setLoadErr((e as Error).message); }
     finally { setStarting(false); }
   };
@@ -90,6 +95,40 @@ export default function RunPage() {
   // 播放时保持亮屏：只在本页播放中持有唤醒锁（离开本页、暂停、停止都放掉；小条在别处照播但不需要亮屏）
   const keepAwake = wakeLockOk && settings.runKeepAwake;
   useScreenWakeLock(playing && keepAwake);
+
+  /**
+   * 加进度 / 已掌握（菜单里对当前词的操作）：先在本地生效——把这个词从这次的播放里去掉、接着播下一个，再提交打分。
+   * 与单词列表的「加进度」同一条规则：来源记为 list，不计入「今日已完成」、不占新词配额；没网时暂存，与学习卡同一份
+   */
+  const rateCurrent = async (result: "know" | "master") => {
+    const w = cur;
+    if (!w || st.index < 0) return;
+    const name = w.display ?? w.spelling;
+    const tail = dropWord(st.index) ? "，本次不再播放" : "；这是最后一个还在播的词，先留着";
+    const body = { wordId: w.wordId, result, date: localToday(), clientTs: `${w.wordId}-${Date.now()}`, source: "list" as const, wordbookId: st.bookId ?? undefined };
+    try {
+      const res = await api<{ nextInterval: number; duplicate: boolean; skipped?: string | null }>("/api/study/rate", { method: "POST", json: body });
+      toast(res.skipped === "removed" ? `${name} 已移出学习，打分未记录${tail}`
+        : res.skipped === "mastered" ? `${name} 已是已掌握${tail}`
+        : res.skipped === "stale" ? `这条打分比其它设备上的记录旧，已记入历史${tail}`
+        : result === "master" ? `已标记为已掌握，以后不再学习${tail}`
+        : res.duplicate ? `${name} 今天已经学过${tail}`
+        : res.nextInterval === -1 ? `间隔已达上限，自动转为已掌握${tail}`
+        : res.nextInterval > 0 ? `已加进度，下次复习 ${res.nextInterval} 天后${tail}` : `已加进度${tail}`);
+    } catch (e) {
+      if (isRetriableRateError(e)) { if (userId) stashPendingRate(userId, body); toast(`网络不可用，打分已暂存、恢复后自动同步${tail}`); }
+      else toast(`没有保存成功：${(e as Error).message}`);
+    }
+  };
+  const onAct = (a: RunAct) => {
+    if (a === "prev") prev();
+    else if (a === "next") next();
+    else if (a === "toggle") { if (playing) pause(); else play(); }
+    else if (a === "stop") setStopAsk(true);
+    else if (a === "progress") rateCurrent("know");
+    else if (a === "master") rateCurrent("master");
+    else if (a === "replay") { const r = replayCurrent(); if (r) toast(r === "already" ? "已经安排好了：这遍读完后再读两遍" : "这遍读完后再读两遍"); }
+  };
 
   let hero: React.ReactNode;
   if (loadErr && !words.length) hero = <div className="run-hero"><p>今天的内容没能加载出来</p><p className="err-msg">{loadErr}</p><button className="btn btn-primary" onClick={() => { setLoadErr(""); load(); }}>重新加载</button></div>;
@@ -129,13 +168,15 @@ export default function RunPage() {
     </div>
   );
   else hero = (
-    // 播放中：单词（标签在同一行）、释义、例句与四个按钮撑满首屏，正文垂直居中，字与按钮都大，跑步 / 骑行时看一眼就能看清、伸手就能按到
-    <div className="run-hero now">
+    // 播放中：单词（标签在同一行）、释义、例句撑满首屏，正文垂直居中、字大；操作按钮是悬浮的圆形按钮（RunControls，portal 在 body 上），
+    // 正文按它在下方还是上方留出位置。跑步 / 骑行时看一眼就能看清、伸手就能按到
+    <div className={`run-hero now ctl-${settings.runControls}`}>
       {cur && (
         <div className="run-now">
           <div className="run-word-line">
             <span className={`tag ${KIND_TAG[cur.kind][0]}`}>{KIND_TAG[cur.kind][1]}</span>
             <div className={"run-word" + wordSize(cur.display ?? cur.spelling)}>{cur.display ?? cur.spelling}</div>
+            {st.echo && st.echo.word === st.index && <span className="run-echo" title="这遍读完后再读两遍"><IconRepeat />×{st.echo.copies - 1}</span>}
           </div>
           {settings.runDef && cur.def && <div className="run-def">{cur.def}</div>}
           {settings.runSentence !== "off" && cur.examples.length > 0 && (
@@ -153,19 +194,12 @@ export default function RunPage() {
       <div className="run-bottom">
         {st.error && <p className="err-msg center">{st.error}</p>}
         <p className="small muted run-hint">{toppingUp ? `正在补充音频 ${st.progress.done} / ${st.progress.total}，播放不受影响` : playing ? (keepAwake ? "屏幕会保持常亮，锁屏后也继续播放；锁屏和耳机上可暂停、切词" : "熄屏也会继续播放；锁屏和耳机上可暂停、切词") : "已暂停"}</p>
-        <div className="run-controls">
-          <button className="run-ctl" type="button" onClick={prev} aria-label="上一个"><IconPrev /><span>上一个</span></button>
-          <button className="run-ctl main run-toggle" type="button" onClick={playing ? pause : play} aria-label={playing ? "暂停" : "继续"}>{playing ? <IconPause /> : <IconPlay />}<span>{playing ? "暂停" : "继续"}</span></button>
-          {/* 停止会丢掉准备好的音频，按钮要醒目但点了先确认（RunStopConfirm） */}
-          <button className="run-ctl stop run-stop" type="button" onClick={() => setStopAsk(true)} aria-label="停止"><IconStop /><span>停止</span></button>
-          <button className="run-ctl" type="button" onClick={next} aria-label="下一个"><IconNext /><span>下一个</span></button>
-        </div>
       </div>
     </div>
   );
 
   return (
-    <main className="run-page">
+    <main className={"run-page" + (active ? ` ctl-${settings.runControls}` : "")}>
       <div className="run-top">
         <Link className="btn btn-icon sm btn-ghost" href="/home" aria-label="返回首页" title="返回首页（播放不会停）"><IconX /></Link>
         <div className="run-title">跑步模式</div>
@@ -174,6 +208,8 @@ export default function RunPage() {
       {embedded && <p className="run-notice">当前浏览器熄屏后可能停止播放，建议用 Safari 打开本页</p>}
       {data && (st.status === "preparing" || st.status === "playing" || st.status === "paused") && !sameWords && <p className="run-notice">今天的内容有更新，停止后重新准备即可听到</p>}
       {hero}
+      {/* 停止会丢掉准备好的音频，菜单里的「停止」点了先确认（RunStopConfirm） */}
+      {active && <RunControls pos={settings.runControls} playing={playing} onAct={onAct} />}
       {words.length > 0 && (
         <>
           <div className="section-title">播放设置</div>
@@ -186,15 +222,20 @@ export default function RunPage() {
             <div className="row setting"><div className="main"><div className="title">词与词之间停几秒</div></div><div className="ctl"><Seg value={settings.runGap} options={[[1, "1"], [2, "2"], [3, "3"], [4, "4"], [5, "5"]]} onChange={(v) => save({ runGap: v })} /></div></div>
             <div className="row setting"><div className="main"><div className="title">语速</div></div><div className="ctl"><Seg value={settings.runSpeed} options={SPEEDS.map((v) => [v, v === 1 ? "1.0" : String(v)])} onChange={(v) => save({ runSpeed: v })} /></div></div>
             {wakeLockOk && <div className="row setting"><div className="main"><div className="title">播放时保持亮屏</div></div><div className="ctl"><Switch checked={settings.runKeepAwake} onChange={(v) => save({ runKeepAwake: v })} /></div></div>}
+            <div className="row setting"><div className="main"><div className="title">操作按钮位置</div></div><div className="ctl"><Seg value={settings.runControls} options={[["bottom", "下方"], ["top", "上方"]]} onChange={(v) => save({ runControls: v })} /></div></div>
           </div>
           <div className="section-title">今天的词 <span className="muted" style={{ fontWeight: 400 }}>{words.length}</span></div>
           <div className="list run-list">
-            {words.map((w, i) => (
-              <div key={w.wordId} className={"row link" + (i === st.index ? " current" : "")} onClick={() => { if (active || st.status === "ready") jumpTo(i); }}>
-                <div className="main"><div className="title">{w.display ?? w.spelling}</div><div className="sub">{w.def ?? "—"}</div></div>
-                <span className={`tag ${KIND_TAG[w.kind][0]}`}>{KIND_TAG[w.kind][1]}</span>
-              </div>
-            ))}
+            {words.map((w, i) => {
+              // 加进度 / 已掌握去掉的词：变灰、标「本次不播」，点了不跳（没有 cue）
+              const gone = st.dropped.includes(i);
+              return (
+                <div key={w.wordId} className={"row link" + (i === st.index ? " current" : "") + (gone ? " dropped" : "")} onClick={() => { if (!gone && (active || st.status === "ready")) jumpTo(i); }}>
+                  <div className="main"><div className="title">{w.display ?? w.spelling}</div><div className="sub">{w.def ?? "—"}</div></div>
+                  <span className={gone ? "tag tag-none" : `tag ${KIND_TAG[w.kind][0]}`}>{gone ? "本次不播" : KIND_TAG[w.kind][1]}</span>
+                </div>
+              );
+            })}
           </div>
         </>
       )}

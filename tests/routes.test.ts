@@ -1,3 +1,4 @@
+import { readdirSync } from "node:fs";
 import { describe, it, expect } from "vitest";
 import { NextRequest } from "next/server";
 import { classifyPath } from "../src/lib/routes";
@@ -49,5 +50,20 @@ describe("中间件：末尾斜杠与匿名跳转", () => {
     expect(home.headers.get("location")).toBe("https://jiaci.app/login?next=%2Fhome");
     expect(run("/word/give%20up").headers.get("location")).toBe("https://jiaci.app/dict/give_up");
     expect(run("/home", { cookie: "aiword_session=abc" }).headers.get("x-middleware-next")).toBe("1");
+  });
+});
+
+describe("拿拼写当路径的地方，同级不能有静态段", () => {
+  // /api/words/<拼写>、/word/<拼写>、/dict/<拼写>：同级要是有静态段（原来的 /api/words/peek），Next 先匹配静态段，同名的那个词就打不开了
+  const entries = (dir: string, kind: "dir" | "file") =>
+    readdirSync(new URL(`../src/app/${dir}`, import.meta.url), { withFileTypes: true }).filter((e) => (kind === "dir" ? e.isDirectory() : e.isFile())).map((e) => e.name).sort();
+  it("/api/words/ 与 /word/ 下面只有 [spelling]", () => {
+    expect(entries("api/words", "dir")).toEqual(["[spelling]"]);
+    expect(entries("api/words", "file")).toEqual([]);
+    expect(entries("(app)/word", "dir")).toEqual(["[spelling]"]);
+  });
+  it("/dict/ 下面除了 [spelling] 只有 book/，book/ 本身没有页面（有了 /dict/book 这个词条页就被抢走）", () => {
+    expect(entries("(public)/dict", "dir")).toEqual(["[spelling]", "book"]);
+    expect(entries("(public)/dict/book", "file")).toEqual([]);
   });
 });

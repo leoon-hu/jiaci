@@ -14,6 +14,7 @@ import SwipeTabs from "./SwipeTabs";
 import WordFreqPanel from "./WordFreqPanel";
 import { wordKind } from "@/lib/words";
 import { categorySummary, type WordCategory } from "@/lib/categories";
+import { lockedLabels } from "@/lib/locked";
 import Modal from "./Modal";
 import CollectModal, { type CollectTarget } from "./CollectModal";
 import { IconBookmark, IconChevron, IconEdit, IconSpeaker, IconFlag } from "./Icons";
@@ -132,8 +133,15 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
       ))}</div>
     </div>
   ));
-  const relatedEmpty = !v.synonyms.length && !v.antonyms.length && !v.confusables.length && !v.mistakes.length && !v.inflections.length && !v.cognates.length && !detail.categories.length;
-  const memoryEmpty = !v.mnemonic && !v.etymology && !v.usage;
+  // 24 小时内看过的词条超过上限（需求 3.2.5）：助记等四块已经去掉，在它们原来的 Tab 里说一声
+  const limited = detail.limited;
+  const limitedRelated = limited ? lockedLabels(limited.locked, "related") : [];
+  const limitedMemory = limited ? lockedLabels(limited.locked, "memory") : [];
+  const limitNote = (labels: string[]) => limited && labels.length > 0 && (
+    <div className="limit-note">24 小时内看过的词条超过 {limited.limit} 个，{labels.join("、")}先不显示，过一段时间再来看。</div>
+  );
+  const relatedEmpty = !v.synonyms.length && !v.antonyms.length && !v.confusables.length && !v.mistakes.length && !v.inflections.length && !v.cognates.length && !detail.categories.length && !limitedRelated.length;
+  const memoryEmpty = !v.mnemonic && !v.etymology && !v.usage && !limitedMemory.length;
 
   return (
     <PickCtx.Provider value={onPick}>
@@ -234,6 +242,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
               {v.mistakes.length > 0 && <div className="entry-section"><h4>常见错误 <AI /></h4>
                 {v.mistakes.map((m, i) => <div className="mistake" key={i}><div className="wrong">✕ <s>{m.wrong}</s></div><div className="fix">✓ {m.right}</div>{m.note && <div className="why">{m.note}</div>}</div>)}
               </div>}
+              {limitNote(limitedRelated)}
               {v.inflections.length > 0 && <div className="entry-section"><h4>词形变化</h4><div className="kv-list">{v.inflections.map((f, i) => <div className="kv" key={i}><span className="en"><WordTokens text={f.w} /></span><span className="zh">{f.label}</span></div>)}</div></div>}
               {v.cognates.length > 0 && <div className="entry-section"><h4>同根词 <AI /></h4>{family(v.cognates)}</div>}
               {/* 同类词（需求 3.4 I7）：手工分类词表，不是 AI 字段；放关联词 Tab 末尾，默认折叠（2026-10-15 用户定，原来在释义 Tab 词族下面） */}
@@ -241,6 +250,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
             </div>
             <div>
               {memoryEmpty && <div className="tab-empty">该词暂无记忆内容</div>}
+              {limitNote(limitedMemory)}
               {v.mnemonic && <div className="entry-section"><h4>助记 <AI /></h4><div className="mnemonic">{v.mnemonic}</div></div>}
               {v.etymology && (v.etymology.parts.length > 0 || v.etymology.origin) && (
                 <div className="entry-section"><h4>词源与构词 <AI /></h4>

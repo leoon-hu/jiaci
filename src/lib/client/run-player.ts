@@ -9,7 +9,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { audioUrl, setExclusivePlayer, stopSpeaking, type VoiceKey } from "./speech";
-import { buildRunPlan, clampExamples, cueIndexAt, frameCount, FRAME_BYTES, isRunClip, SILENCE_FRAME, type RunClipKind, type RunCue, type RunPlanOptions } from "@/lib/run-plan";
+import { buildRunPlan, clampExamples, cueIndexAt, frameCount, FRAME_BYTES, isRunClip, SILENCE_FRAME, type RunClipKind, type RunCue, type RunEcho, type RunPlanOptions } from "@/lib/run-plan";
 
 export type RunWord = { wordId: string; spelling: string; display: string | null; kind: "review" | "new" | "done"; phonetic: { us: string; uk: string } | null; def: string | null; examples: Array<{ en: string; zh: string }> };
 export type RunOptions = RunPlanOptions & { speed: number };
@@ -25,10 +25,16 @@ export type RunState = {
   skipped: number;
   /** 一轮的时长（秒） */
   duration: number;
+  /** 这次不再播放的词（加进度 / 已掌握去掉的，词序号）；停止后清空 */
+  dropped: number[];
+  /** 安排了重放的词：在整段里连拼了 copies 遍，读完自动拼回一遍 */
+  echo: RunEcho | null;
+  /** 这批词来自哪本词库：打分时带上（离线补交时当前学习词库可能已经换了） */
+  bookId: string | null;
   error: string;
 };
 
-const INITIAL: RunState = { status: "idle", words: [], index: -1, progress: { done: 0, total: 0 }, skipped: 0, duration: 0, error: "" };
+const INITIAL: RunState = { status: "idle", words: [], index: -1, progress: { done: 0, total: 0 }, skipped: 0, duration: 0, dropped: [], echo: null, bookId: null, error: "" };
 let state: RunState = INITIAL;
 const listeners = new Set<() => void>();
 function set(patch: Partial<RunState>) { state = { ...state, ...patch }; listeners.forEach((l) => l()); }
@@ -46,6 +52,14 @@ let clipUrls: ClipUrls[] = [];
 let clips = new Map<string, ArrayBuffer>();
 /** 试过拿不到的片段（没有音频、格式不对），改设置时不再反复去要 */
 let unavailable = new Set<string>();
+/** 这次不再播的词（加进度 / 已掌握）与安排了重放的词：重拼时交给 buildRunPlan */
+let dropped = new Set<number>();
+let echo: RunEcho | null = null;
+/**
+ * 词间静音的最后这么多秒是「安全换源区」：重放读完后把多出来的几遍拼掉要换一次 src，只在这里做，听不出任何停顿
+ * （间隔最短 1 秒；timeupdate 约 250 ms 一次，总有一次落在里面）
+ */
+const GAP_EDGE = 0.5;
 let options: RunOptions = { repeat: 2, def: true, sentence: "both", examples: 2, gap: 2, speed: 1 };
 /** 补下载的序号：改设置连点几下，只有最后一次的结果拿来重拼 */
 let topUpSeq = 0;
@@ -111,9 +125,14 @@ function ensureAudio(): HTMLAudioElement {
   a.preload = "auto";
   a.loop = true;
   a.addEventListener("timeupdate", () => {
-    if (!cues.length) return;
-    const w = cues[cueIndexAt(cues, a.currentTime)]?.word;
-    if (w !== undefined && w !== state.index) { set({ index: w }); updateMetadata(); }
+    // 换 src 时元素会先把位置归零并发一次 timeupdate，这时的 0 秒不是真位置，别把当前词闪成第一个
+    if (!cues.length || rebuilding) return;
+    const t = a.currentTime;
+    const c = cues[cueIndexAt(cues, t)];
+    if (!c) return;
+    if (c.word !== state.index) { set({ index: c.word }); updateMetadata(); }
+    // 重放的几遍读完了（或者熄屏期间已经过去了）：等到当前词末尾的静音里再把多出来的几遍拼掉，位置照旧，听不出来
+    if (echo && t >= c.end - GAP_EDGE) { echo = null; build(c.word, state.status === "playing", { fromEnd: c.end - t }); }
   });
   // 真的开始播了，换 src 的过程就算结束（有的平台要到 play() 才加载 metadata）
   a.addEventListener("play", () => { rebuilding = false; if (active()) { set({ status: "playing", error: "" }); setPlaybackState("playing"); } });
@@ -188,12 +207,13 @@ async function download(urls: string[], signal: AbortSignal, isCurrent: () => bo
 }
 
 /**
- * 按当前设置把片段拼成一整段，从 atWord 这个词开始；resume 时 metadata 就绪就接着播。
+ * 按当前设置把片段拼成一整段（去掉 dropped 的词、echo 的词连拼几遍），从 atWord 这个词开始；resume 时 metadata 就绪就接着播。
+ * at.offset 是从这个词开头起的秒数、at.fromEnd 是离这个词（含间隔）末尾的秒数——重放 / 去词这类位置不变的重拼靠它们接上原来的位置。
  * 不等 metadata 就返回：iOS 可能要到 play() 才真正加载，等它会让「开始」按钮永远出不来；
  * 初次拼接从 0 开始不需要 seek，重拼时的 seek 与续播放在 loadedmetadata 里做。
  */
-function build(atWord: number, resume: boolean) {
-  const plan = buildRunPlan(clipUrls.map(sizesOf), options);
+function build(atWord: number, resume: boolean, at: { offset?: number; fromEnd?: number } = {}) {
+  const plan = buildRunPlan(clipUrls.map(sizesOf), options, { omit: dropped, echo });
   cues = plan.cues;
   const parts: ArrayBuffer[] = plan.parts.map((p) => {
     if (p.type === "silence") return silence(p.frames);
@@ -206,8 +226,9 @@ function build(atWord: number, resume: boolean) {
   if (blobUrl) URL.revokeObjectURL(blobUrl);
   blobUrl = URL.createObjectURL(new Blob(parts, { type: "audio/mpeg" }));
   const ci = Math.max(0, cues.findIndex((c) => c.word === atWord));
-  const startAt = cues[ci]?.start ?? 0;
-  set({ skipped: plan.skipped.length, duration: plan.duration, index: cues[ci]?.word ?? -1 });
+  const c = cues[ci];
+  const startAt = !c ? 0 : at.fromEnd !== undefined ? Math.max(c.start, c.end - at.fromEnd) : Math.min(c.end, c.start + (at.offset ?? 0));
+  set({ skipped: plan.skipped.length, duration: plan.duration, index: c?.word ?? -1, echo });
   updateMetadata();
   const onMeta = () => {
     a.removeEventListener("error", onErr);
@@ -223,14 +244,14 @@ function build(atWord: number, resume: boolean) {
   a.load();
 }
 
-/** 下载今天的片段并拼好，状态 preparing → ready；再次调用会作废上一次 */
-export async function prepare(words: RunWord[], opts: RunOptions, key: VoiceKey) {
+/** 下载今天的片段并拼好，状态 preparing → ready；再次调用会作废上一次。bookId 是这批词所属的词库，打分时带上 */
+export async function prepare(words: RunWord[], opts: RunOptions, key: VoiceKey, bookId: string | null = null) {
   reset();
   const my = ++prepareSeq;
   aborter = new AbortController();
   const { signal } = aborter;
   options = opts;
-  set({ status: "preparing", words, index: -1, progress: { done: 0, total: 0 }, skipped: 0, duration: 0, error: "" });
+  set({ status: "preparing", words, bookId, index: -1, progress: { done: 0, total: 0 }, skipped: 0, duration: 0, error: "" });
   // 例句译文是中文，与释义走同一种音频（中文音色）
   clipUrls = await Promise.all(words.map(async (w) => ({
     word: (await audioUrl("word", w.spelling, key)) ?? undefined,
@@ -270,14 +291,55 @@ function seekToCue(ci: number) {
   const a = audio;
   if (!a || !cues.length) return;
   const c = cues[(ci + cues.length) % cues.length];
+  // 切词时作废还没读完的重放：按没有重放的计划重拼、从目标词开头播（不重拼的话这一轮循环回来那个词还会读三遍）
+  if (echo) { echo = null; build(c.word, state.status === "playing"); return; }
   a.currentTime = c.start;
   set({ index: c.word });
   updateMetadata();
 }
 export function next() { if (audio && cues.length) seekToCue(cueIndexAt(cues, audio.currentTime) + 1); }
 export function prev() { if (audio && cues.length) seekToCue(cueIndexAt(cues, audio.currentTime) - 1); }
-/** 跳到某个词（词表里点一行）；被跳过的词没有 cue，不动 */
+/** 跳到某个词（词表里点一行）；被跳过 / 去掉的词没有 cue，不动 */
 export function jumpTo(word: number) { const ci = cues.findIndex((c) => c.word === word); if (ci >= 0) seekToCue(ci); }
+
+/**
+ * 把一个词从这次的播放里去掉（加进度 / 已掌握，需求 3.2.6）：重拼时不再拼它，这一轮循环回来也不读。
+ * 是当前词就接着播下一个还在的词（从头）；不是当前词就位置不动。只剩这一个在播的词时不去掉（返回 false），否则整段音频就空了
+ */
+export function dropWord(word: number): boolean {
+  const a = audio;
+  if (!a || !cues.length || !active()) return false;
+  if (dropped.has(word)) return true;
+  if (!cues.some((c) => c.word !== word)) return false;
+  dropped.add(word);
+  if (echo?.word === word) echo = null;
+  const resume = state.status === "playing";
+  const ci = cueIndexAt(cues, a.currentTime);
+  const c = cues[ci];
+  if (c.word === word) build(cues[(ci + 1) % cues.length].word, resume);
+  else build(c.word, resume, { offset: a.currentTime - c.start });
+  set({ dropped: Array.from(dropped) });
+  return true;
+}
+
+/**
+ * 重放：当前词这遍读完后紧接着再读两遍（需求 3.2.6）。在计划里把它连拼成「正在读的这遍 + 两遍」，位置不变地重拼；
+ * 已经在重放中、这遍后面本来就还有两遍时不重复安排（"already"）。多出来的几遍读完后 timeupdate 在词尾的静音里拼回去
+ */
+export function replayCurrent(): "scheduled" | "already" | null {
+  const a = audio;
+  if (!a || !cues.length || !active()) return null;
+  const t = a.currentTime;
+  const c = cues[cueIndexAt(cues, t)];
+  const copies = echo?.word === c.word ? echo.copies : 1;
+  const unit = (c.end - c.start) / copies;
+  const playing = Math.min(copies - 1, Math.max(0, Math.floor((t - c.start) / unit)));
+  const want = playing + 3;
+  if (echo?.word === c.word && echo.copies >= want) return "already";
+  echo = { word: c.word, copies: want };
+  build(c.word, state.status === "playing", { offset: t - c.start });
+  return "scheduled";
+}
 
 /**
  * 改设置：语速直接改；其余重新拼接，当前词接着播。已有的片段不重新下载；
@@ -308,6 +370,8 @@ function reset() {
   clipUrls = [];
   clips = new Map();
   unavailable = new Set();
+  dropped = new Set();
+  echo = null;
   state = { ...INITIAL };
   if (audio) {
     audio.pause();

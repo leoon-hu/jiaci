@@ -12,7 +12,7 @@ export function generateStaticParams() { return []; }
 
 type Props = { params: Promise<{ spelling: string }> };
 
-/** 标题、描述、canonical 都按词生成；描述取核心义 + 第一条例句 */
+/** 标题、描述、canonical 都按词生成；描述取核心义 + 第一条例句，只写页面上有的块（助记、词源等登录后才看，需求 3.7 P13） */
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const spelling = pathToSpelling((await params).spelling);
   const data = spelling ? await loadPublicWord(spelling) : null;
@@ -21,7 +21,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const v = data.view;
   const core = v.core ?? "";
   const ex = v.examples[0]?.en ?? "";
-  const description = `${w}${core ? `：${core}` : ""}。${w} 的释义、例句、搭配、句型、近反义辨析、词族与词源${ex ? `。例句：${ex}` : ""}`.slice(0, 160);
+  const description = `${w}${core ? `：${core}` : ""}。${w} 的释义、例句、搭配、句型、近反义辨析与词族${ex ? `。例句：${ex}` : ""}`.slice(0, 160);
   const title = `${w} 是什么意思？${w} 的用法、例句与搭配`;
   const url = dictUrl(data.spelling);
   return {

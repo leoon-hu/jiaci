@@ -1,10 +1,7 @@
 import { prisma } from "./db";
-import { pickAi, type AiPreference } from "./ai/providers";
+import { AI_CORE_SELECT, pickAi, type AiPreference } from "./ai/providers";
 import { wordCore } from "./word-view";
 import { shortGloss, type WordCategory } from "./categories";
-
-/** 成员的主释义只要核心义：整行会把例句 / 搭配等 JSONB 一起拉出来，一个词可能有几十个同类 */
-const CORE_SELECT = { aiOpenai: { select: { core: true, corePos: true } }, aiDeepseek: { select: { core: true, corePos: true } } } as const;
 
 /**
  * 某个词所属的全部类别，以及每个类别里本词之外的其它成员（都按词表顺序）。
@@ -19,7 +16,7 @@ export async function wordCategories(wordId: string, pref: AiPreference = "auto"
   const rows = await prisma.wordCategoryMember.findMany({
     where: { categoryId: { in: mine.map((m) => m.categoryId) }, wordId: { not: wordId } },
     orderBy: [{ sortOrder: "asc" }],
-    select: { categoryId: true, gloss: true, word: { select: { spelling: true, display: true, translation: true, ...CORE_SELECT } } },
+    select: { categoryId: true, gloss: true, word: { select: { spelling: true, display: true, translation: true, ...AI_CORE_SELECT } } },
   });
   const byCat = new Map<string, WordCategory>(mine.map((m) => [m.categoryId, { name: m.category.name, words: [] }]));
   for (const r of rows) {

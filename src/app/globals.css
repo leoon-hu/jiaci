@@ -111,6 +111,50 @@ p{margin:0 0 10px}
 .pomo-phase.focus{color:var(--primary)}
 .pomo-phase.break{color:var(--ok)}
 
+/* ---------- 单词搜索（需求 3.9）：顶栏按钮（宽屏是带「搜索单词」字样的小框，窄屏只有放大镜）+ 搜索面板（桌面顶部居中，手机铺满整屏） ---------- */
+.search-btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px 0 10px;border:1px solid var(--border);border-radius:999px;background:var(--bg);color:var(--muted);font-size:13px;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.search-btn svg{width:16px;height:16px;flex:none}
+.search-btn:hover{color:var(--text);border-color:var(--border-strong)}
+@media (max-width:1023px){
+  .search-btn{width:32px;padding:0;justify-content:center;border-color:transparent;background:transparent}
+  .search-btn svg{width:20px;height:20px}
+  .search-btn:hover{background:var(--bg);border-color:transparent}
+  .search-btn .label{display:none}
+}
+.search-backdrop{position:fixed;inset:0;z-index:70;display:flex;align-items:flex-start;justify-content:center;padding:10vh 16px 16px;background:rgba(10,12,18,.5);backdrop-filter:blur(2px)}
+.search-panel{width:100%;max-width:560px;max-height:min(70vh,560px);max-height:min(70dvh,560px);display:flex;flex-direction:column;background:var(--card);border-radius:16px;box-shadow:var(--shadow-lg);overflow:hidden;animation:pop .18s ease-out}
+.search-bar{flex:none;display:flex;align-items:center;gap:6px;height:54px;padding:0 6px 0 16px;border-bottom:1px solid var(--border)}
+.search-bar>svg{flex:none;width:18px;height:18px;color:var(--faint)}
+/* 16px：iOS 输入框字号小于 16px 时聚焦会放大页面 */
+.search-input{flex:1;min-width:0;height:100%;padding:0 4px;border:0;outline:0;background:transparent;color:var(--text);font:inherit;font-size:16px;-webkit-appearance:none;appearance:none}
+.search-input::-webkit-search-decoration,.search-input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.search-clear{flex:none;color:var(--faint)}
+.search-clear svg{width:16px;height:16px}
+.search-cancel{flex:none;height:36px;padding:0 10px;border:0;background:transparent;color:var(--primary);font-size:15px;cursor:pointer}
+.search-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 0 8px}
+.search-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px 4px;font-size:13px;color:var(--muted)}
+.search-clear-all{border:0;background:transparent;padding:4px 0;color:var(--muted);font-size:13px;cursor:pointer}
+.search-clear-all:hover{color:var(--danger)}
+.search-hint{margin:0;padding:24px 16px;text-align:center;color:var(--muted);font-size:14px}
+.search-list{list-style:none;margin:0;padding:0}
+.search-list.stale{opacity:.55}
+.search-item{display:flex;align-items:center}
+.search-item.on{background:var(--primary-soft)}
+.search-go{flex:1;min-width:0;min-height:48px;display:flex;flex-direction:column;justify-content:center;gap:2px;padding:8px 16px;border:0;background:transparent;color:var(--text);text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.search-line{display:flex;align-items:baseline;gap:8px;min-width:0;white-space:nowrap}
+.search-w{flex:none;font-size:16px;font-weight:700}
+.search-line .pos{min-width:0}
+.search-def{min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--muted);font-size:14px}
+.search-note{font-size:12px;color:var(--primary)}
+.search-del{flex:none;width:44px;height:44px;display:grid;place-items:center;border:0;background:transparent;color:var(--faint);cursor:pointer}
+.search-del svg{width:14px;height:14px}
+.search-del:hover{color:var(--danger)}
+@media (max-width:767px){
+  .search-backdrop{padding:0;background:var(--card);backdrop-filter:none}
+  .search-panel{max-width:none;max-height:none;height:100%;border-radius:0;box-shadow:none;animation:none;padding-top:env(safe-area-inset-top)}
+  .search-body{padding-bottom:calc(8px + env(safe-area-inset-bottom))}
+}
+
 /* ---------- 跑步模式播放中的小条（需求 3.2.6）：离开 /run 后挂在主框架底部，手机上让开底部 Tab ---------- */
 .run-pill{position:fixed;left:50%;transform:translateX(-50%);bottom:16px;z-index:19;display:flex;align-items:center;gap:6px;width:min(560px,calc(100% - 24px));padding:6px 6px 6px 12px;background:var(--card);border:1px solid var(--border);border-radius:999px;box-shadow:var(--shadow-lg)}
 .run-pill .body{flex:1;min-width:0;display:flex;align-items:center;gap:10px;color:var(--text);text-decoration:none}
@@ -547,6 +591,8 @@ textarea.input.note-input{min-height:220px;font-size:16px;line-height:1.6}
 .etym .plus{color:var(--faint);margin-right:6px}
 .etym .origin{color:var(--muted);line-height:1.7;font-size:14px;margin:0}
 .tab-empty{color:var(--faint);font-size:13px;padding:28px 0;text-align:center}
+/* 24 小时内看过的词条超过上限时，助记等四块所在 Tab 里的一行说明（需求 3.2.5） */
+.limit-note{margin:12px 0;padding:10px 12px;border-radius:var(--radius-sm);background:var(--bg);color:var(--muted);font-size:13px;line-height:1.5}
 .detail-ops .btn svg{width:18px;height:18px}
 .peek-core{font-weight:700;margin-bottom:2px}
 /* 首屏折叠块：释义 / 搭配 / 短语与习语 / 句型 默认折叠，标题行可点；核心义右侧「全部展开 / 收起」 */

@@ -25,6 +25,13 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   "study.master_interval": "60",
   "study.fsrs_params": "",
   "import.max_words": "5000",
+  // 公开词条页带来源标注的词数（需求 3.7 P12）：全部词条按固定的哈希顺序取前这么多个，最多 2000（BRAND_WORDS_MAX），0 = 关
+  "public.brand_words": "2000",
+  // 登录后的详情（需求 3.2.5）：每个账号 24 小时内能看到助记 / 词源与构词 / 易混词 / 常见错误的不同词条数，
+  // 注册不满 new_user_days 天的账号用 daily_per_new_user；学习页会预取后面几张卡片，正常学习碰不到
+  "detail.daily_per_user": "1500",
+  "detail.daily_per_new_user": "300",
+  "detail.new_user_days": "7",
   // 每个用户最多几本自己的词库（导入的与自建的合计，需求 3.3.1）；已经超过的不动，只是不能再建
   "wordbook.max_per_user": "3",
   // 发音音频：合成引擎、四种声音的音色名、语速、并发、批量预生成例句用的声音

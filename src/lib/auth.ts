@@ -138,7 +138,8 @@ export async function destroySession() {
   jar.set(SESSION_COOKIE, "", { httpOnly: true, path: "/", expires: new Date(0) });
 }
 
-export type CurrentUser = { id: string; email: string; settings: Record<string, unknown>; termsVersion: string | null };
+/** createdAt：注册时间，新账号的详情上限按它判断（需求 3.2.5） */
+export type CurrentUser = { id: string; email: string; settings: Record<string, unknown>; termsVersion: string | null; createdAt: Date };
 
 /**
  * 读取当前登录用户；活跃时自动续期（每天最多写一次）。
@@ -166,7 +167,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
   const settings = (s.user.settings as Record<string, unknown>) ?? {};
   // user 整行已经取回来了，把设置存进请求级缓存：后面 getSettings 就不必再查一次库
   primeSettings(s.user.id, settings);
-  return { id: s.user.id, email: s.user.email, settings, termsVersion: s.user.termsVersion };
+  return { id: s.user.id, email: s.user.email, settings, termsVersion: s.user.termsVersion, createdAt: s.user.createdAt };
 });
 
 export async function requireUser(): Promise<CurrentUser> {

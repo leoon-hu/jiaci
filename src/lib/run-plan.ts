@@ -48,6 +48,10 @@ export type RunPart = { type: "clip"; word: number; kind: RunClipKind; n: number
 /** 一个词在整段音频里的起止（秒）；end 含它后面的间隔，所以 cue 首尾相接铺满整段 */
 export type RunCue = { word: number; start: number; end: number };
 export type RunPlan = { parts: RunPart[]; cues: RunCue[]; duration: number; skipped: number[] };
+/** 重放（需求 3.2.6）：word 这个词在整段里连拼 copies 遍（每遍之后都停词间间隔），cue 仍只有一条、首尾盖住全部几遍 */
+export type RunEcho = { word: number; copies: number };
+/** 播放中对计划的临时改动：omit 是这次不再播的词（加进度 / 已掌握去掉的，不算 skipped），echo 是安排了重放的词 */
+export type RunPlanExtras = { omit?: ReadonlySet<number>; echo?: RunEcho | null };
 
 /** 固定的段内间隔（秒）：单词两遍之间、单词到释义、到每条例句、例句英文到译文 */
 const REPEAT_GAP = 0.5;
@@ -65,8 +69,10 @@ export const clampExamples = (n: number) => Math.min(RUN_MAX_EXAMPLES, Math.max(
  * 每个词：单词 × repeat（遍间 0.5 s）→ 释义（可关）→ 前 examples 条例句（每条：0.8 s → 英文 → 0.5 s → 译文；
  * 「只读英文」不带译文，没有英文音频的例句整条跳过）→ 停 gap 秒 → 下一个词。
  * 一段都没有的词跳过（记在 skipped）。帧数用整数累加，避免浮点误差让 cue 与实际错位。
+ * extras.omit 里的词不拼也不算 skipped；extras.echo 指定的词整块连拼 copies 遍（含每遍后的间隔），cue 只有一条盖住全部几遍——
+ * 上一个 / 下一个按 cue 跳，重放中的词按一个词算，不用连按三下才能跳过去。
  */
-export function buildRunPlan(words: RunPlanWord[], opts: RunPlanOptions): RunPlan {
+export function buildRunPlan(words: RunPlanWord[], opts: RunPlanOptions, extras: RunPlanExtras = {}): RunPlan {
   const repeat = clampRepeat(opts.repeat);
   const examples = clampExamples(opts.examples);
   const gapFrames = silenceFrames(clampGap(opts.gap));
@@ -76,6 +82,7 @@ export function buildRunPlan(words: RunPlanWord[], opts: RunPlanOptions): RunPla
   let frames = 0;
   const has = (b: number | undefined): b is number => b !== undefined && frameCount(b) > 0;
   words.forEach((w, i) => {
+    if (extras.omit?.has(i)) return;
     // 序列里的数字是静音秒数，其余是片段
     const seq: Array<[RunClipKind, number, number] | number> = [];
     if (has(w.clips.word)) for (let r = 0; r < repeat; r++) { if (r) seq.push(REPEAT_GAP); seq.push(["word", 0, w.clips.word]); }
@@ -89,13 +96,16 @@ export function buildRunPlan(words: RunPlanWord[], opts: RunPlanOptions): RunPla
       });
     }
     if (!seq.length) { skipped.push(i); return; }
+    const copies = extras.echo?.word === i ? Math.max(1, Math.floor(extras.echo.copies) || 1) : 1;
     const start = frames;
-    for (const s of seq) {
-      if (typeof s === "number") { const n = silenceFrames(s); parts.push({ type: "silence", frames: n }); frames += n; }
-      else { parts.push({ type: "clip", word: i, kind: s[0], n: s[1] }); frames += frameCount(s[2]); }
+    for (let k = 0; k < copies; k++) {
+      for (const s of seq) {
+        if (typeof s === "number") { const n = silenceFrames(s); parts.push({ type: "silence", frames: n }); frames += n; }
+        else { parts.push({ type: "clip", word: i, kind: s[0], n: s[1] }); frames += frameCount(s[2]); }
+      }
+      parts.push({ type: "silence", frames: gapFrames });
+      frames += gapFrames;
     }
-    parts.push({ type: "silence", frames: gapFrames });
-    frames += gapFrames;
     cues.push({ word: i, start: start * FRAME_SECONDS, end: frames * FRAME_SECONDS });
   });
   return { parts, cues, duration: frames * FRAME_SECONDS, skipped };

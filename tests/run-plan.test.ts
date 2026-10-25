@@ -99,6 +99,38 @@ describe("buildRunPlan", () => {
     const plan = buildRunPlan([], { repeat: 2, def: true, sentence: "both", examples: 2, gap: 2 });
     expect(plan).toEqual({ parts: [], cues: [], duration: 0, skipped: [] });
   });
+
+  it("omit：这次不播的词不拼、也不算 skipped；后面的词 cue 前移", () => {
+    const opts = { repeat: 1, def: false, sentence: "off" as const, examples: 2, gap: 1 };
+    const base = buildRunPlan(words, opts);
+    expect(base.cues.map((c) => c.word)).toEqual([0, 1]);
+    const plan = buildRunPlan(words, opts, { omit: new Set([0]) });
+    expect(plan.skipped).toEqual([2, 3]);
+    expect(plan.cues).toEqual([{ word: 1, start: 0, end: sec(50 + silenceFrames(1)) }]);
+    expect(plan.parts).toEqual([clip(1, "word"), gap(1)]);
+    // 全部去掉：空计划
+    expect(buildRunPlan(words, opts, { omit: new Set([0, 1]) })).toEqual({ parts: [], cues: [], duration: 0, skipped: [2, 3] });
+  });
+
+  it("echo：重放的词整块连拼 copies 遍（每遍后都停间隔），cue 仍只有一条、盖住全部几遍", () => {
+    const opts = { repeat: 2, def: true, sentence: "off" as const, examples: 2, gap: 2 };
+    const one = buildRunPlan(words, opts);
+    const plan = buildRunPlan(words, opts, { echo: { word: 0, copies: 3 } });
+    const block = [clip(0, "word"), gap(0.5), clip(0, "word"), gap(0.8), clip(0, "definition"), gap(2)];
+    expect(plan.parts.slice(0, block.length * 3)).toEqual([...block, ...block, ...block]);
+    expect(plan.parts.slice(block.length * 3)).toEqual(one.parts.slice(block.length));
+    expect(plan.cues.length).toBe(one.cues.length);
+    expect(plan.cues[0]).toEqual({ word: 0, start: 0, end: one.cues[0].end * 3 });
+    expect(plan.cues[1].start).toBeCloseTo(one.cues[0].end * 3, 9);
+    expect(plan.duration).toBeCloseTo(one.duration + one.cues[0].end * 2, 9);
+    // copies ≤ 1、不是整数、指到被跳过的词：都等于没有重放
+    expect(buildRunPlan(words, opts, { echo: { word: 0, copies: 1 } })).toEqual(one);
+    expect(buildRunPlan(words, opts, { echo: { word: 0, copies: 0 } })).toEqual(one);
+    expect(buildRunPlan(words, opts, { echo: { word: 2, copies: 3 } })).toEqual(one);
+    expect(buildRunPlan(words, opts, { echo: null })).toEqual(one);
+    // 被 omit 的词上的 echo 不起作用
+    expect(buildRunPlan(words, opts, { omit: new Set([0]), echo: { word: 0, copies: 3 } })).toEqual(buildRunPlan(words, opts, { omit: new Set([0]) }));
+  });
 });
 
 describe("cueIndexAt", () => {

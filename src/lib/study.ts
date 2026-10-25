@@ -13,6 +13,8 @@ import { RUN_MAX_EXAMPLES } from "./run-plan";
 import { quotaFull, quotaFullMessage, type BookQuota } from "./wordbook-quota";
 import { wordCategories } from "./categories-db";
 import type { WordCategory } from "./categories";
+import { hasLocked, lockedOf, withoutLocked, type LockedBlocks } from "./locked";
+import { createDetailQuota } from "./detail-quota";
 
 /** ---------- 通用查询 ---------- */
 
@@ -96,6 +98,8 @@ export type WordDetail = {
   bookIsCurrent: boolean;
   /** 那本词库是否开了独立进度（顶部要标出来，免得把两套进度看混） */
   ownProgress: boolean;
+  /** 24 小时内看过的词条超过上限（需求 3.2.5）：view 里那四块已去掉，locked 是本词原来有的几块，提示里列出来 */
+  limited?: { limit: number; locked: LockedBlocks };
 };
 
 /** 洗牌（Fisher-Yates）：详情页的例句每次进入都换个顺序，自动朗读读到的那一条也就跟着变 */
@@ -150,6 +154,27 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     history: logs.map((l) => ({ d: fromDate(l.studyDate)!, r: l.result, i: l.nextInterval })),
     bookId: useBookId, bookName: book?.name ?? null, bookIsCurrent: !!useBookId && useBookId === currentId, ownProgress: scope !== GLOBAL_SCOPE,
   };
+}
+
+// 整个进程只要一份计数：API 路由与页面的服务端取数都用它，开发模式热更新也会重新执行本模块，
+// 挂在 globalThis 上才不会各算各的（同 lib/db.ts 的 Prisma 单例）
+const quotaHolder = globalThis as unknown as { aiwordDetailQuota?: ReturnType<typeof createDetailQuota> };
+const detailQuota = (quotaHolder.aiwordDetailQuota ??= createDetailQuota());
+
+/**
+ * 登录后的详情：助记 / 词源与构词 / 易混词 / 常见错误四块（公开页不放，需求 3.7 P13）每个账号 24 小时有上限（需求 3.2.5），
+ * 免得注册个账号就把它们批量拿走。本词这四块一块都没有的不计数；超了只去掉这四块、带上 limited，其余内容与打分照常。
+ * 凡是把 buildWordDetail 的结果交给用户的地方（/api/words/[spelling]、详情页的服务端取数）都要过这一道
+ */
+export async function applyDetailQuota(user: { id: string; createdAt: Date }, detail: WordDetail): Promise<WordDetail> {
+  const locked = lockedOf(detail.view);
+  if (!hasLocked(locked)) return detail;
+  const [perUser, perNewUser, newDays] = await Promise.all([
+    getConfigInt("detail.daily_per_user"), getConfigInt("detail.daily_per_new_user"), getConfigInt("detail.new_user_days", 0),
+  ]);
+  const limit = Date.now() - user.createdAt.getTime() < newDays * 86_400_000 ? perNewUser : perUser;
+  if (detailQuota.take(user.id, detail.id, limit)) return detail;
+  return { ...detail, view: withoutLocked(detail.view), limited: { limit, locked } };
 }
 
 /** ---------- 打分（3.2.4） ---------- */
@@ -401,9 +426,9 @@ type AiRunRow = { phoneticUs: string | null; phoneticUk: string | null; core: st
  * 今天已在学习卡上完成的词（source = study 且最后一条是认识 / 已掌握，即首页「今日已完成」那批）在后，
  * 去重后截到 limit 个（不传按用户设置 runWords）。跑前听是预习、学完听是复习，两种用法都覆盖。
  */
-export async function buildRunList(userId: string, today: string, limit?: number): Promise<{ words: RunWord[]; total: number; hasBook: boolean }> {
+export async function buildRunList(userId: string, today: string, limit?: number): Promise<{ words: RunWord[]; total: number; hasBook: boolean; bookId: string | null }> {
   const q = await buildTodayQueue(userId, today);
-  if (!q.hasBook) return { words: [], total: 0, hasBook: false };
+  if (!q.hasBook) return { words: [], total: 0, hasBook: false, bookId: null };
   const max = Math.min(RUN_MAX_WORDS, limit ?? q.settings.runWords);
   const scope = await scopeOfBook(userId, q.bookId);
   const todayLogs = await prisma.studyLog.findMany({ where: { userId, scope, studyDate: toDate(today)!, source: "study" }, orderBy: { studiedAt: "asc" }, select: { wordId: true, result: true } });
@@ -412,7 +437,7 @@ export async function buildRunList(userId: string, today: string, limit?: number
   for (const id of doneTodayIds(todayLogs)) if (!kinds.has(id)) kinds.set(id, "done");
   const ids = Array.from(kinds.keys());
   const picked = ids.slice(0, max);
-  if (!picked.length) return { words: [], total: 0, hasBook: true };
+  if (!picked.length) return { words: [], total: 0, hasBook: true, bookId: q.bookId };
   const rows = await prisma.word.findMany({ where: { id: { in: picked } }, include: AI_RUN_SELECT });
   const byId = new Map(rows.map((w) => [w.id, w]));
   const words: RunWord[] = [];
@@ -423,7 +448,8 @@ export async function buildRunList(userId: string, today: string, limit?: number
     const v = wordView(w, p?.row, p?.provider ?? null);
     words.push({ wordId: w.id, spelling: w.spelling, display: w.display, kind: kinds.get(id)!, phonetic: v.phonetic, def: wordCore(w, p?.row).def, examples: v.examples.slice(0, RUN_MAX_EXAMPLES).map((e) => ({ en: e.en, zh: e.zh })) });
   }
-  return { words, total: ids.length, hasBook: true };
+  // bookId：这批词属于哪本词库，跑步页里的加进度 / 已掌握打分时带上（与学习页同一个道理：离线补交时当前词库可能已换）
+  return { words, total: ids.length, hasBook: true, bookId: q.bookId };
 }
 
 /** ---------- 词库进度 / 单词列表（3.3.1 / 3.3.5） ---------- */

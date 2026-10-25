@@ -24,6 +24,11 @@ export const IconPause = () => (<svg {...base} fill="currentColor"><rect x="5" y
 export const IconStop = () => (<svg {...base} fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2" /></svg>);
 export const IconPrev = () => (<svg {...base} fill="currentColor"><polygon points="19 20 9 12 19 4 19 20" /><line x1="5" y1="19" x2="5" y2="5" /></svg>);
 export const IconNext = () => (<svg {...base} fill="currentColor"><polygon points="5 4 15 12 5 20 5 4" /><line x1="19" y1="5" x2="19" y2="19" /></svg>);
+/** 跑步模式播放页的圆形操作按钮（竖排三点，点开后换成 ✕）与菜单里的「加进度 / 已掌握 / 重放」 */
+export const IconMore = () => (<svg {...base} fill="currentColor" stroke="none"><circle cx="12" cy="5" r="2.2" /><circle cx="12" cy="12" r="2.2" /><circle cx="12" cy="19" r="2.2" /></svg>);
+export const IconTrendUp = () => (<svg {...base}><polyline points="22 7 13.5 15.5 8.5 10.5 2 17" /><polyline points="16 7 22 7 22 13" /></svg>);
+export const IconCheckCircle = () => (<svg {...base}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>);
+export const IconRepeat = () => (<svg {...base}><polyline points="17 1 21 5 17 9" /><path d="M3 11V9a4 4 0 0 1 4-4h14" /><polyline points="7 23 3 19 7 15" /><path d="M21 13v2a4 4 0 0 1-4 4H3" /></svg>);
 /** 安装引导（需求 4.1）里 iOS 步骤说明用的「分享」与「添加到主屏幕」图标，形状照着 iOS 的画 */
 export const IconShare = () => (<svg {...base}><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" /><polyline points="16 6 12 2 8 6" /><line x1="12" y1="2" x2="12" y2="15" /></svg>);
 export const IconPlusSquare = () => (<svg {...base}><rect x="3" y="3" width="18" height="18" rx="3" /><line x1="12" y1="8" x2="12" y2="16" /><line x1="8" y1="12" x2="16" y2="12" /></svg>);

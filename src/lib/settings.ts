@@ -31,6 +31,8 @@ export const SettingsSchema = z.object({
   runSpeed: z.number().min(0.8).max(1.2),
   /** 播放时保持亮屏：在跑步页播放中申请屏幕唤醒锁；浏览器不支持时页面不显示这一项 */
   runKeepAwake: z.boolean(),
+  /** 播放页圆形操作按钮的位置：悬浮在屏幕底部正中 / 顶栏下面正中 */
+  runControls: z.enum(["bottom", "top"]),
 });
 export type UserSettings = z.infer<typeof SettingsSchema>;
 
@@ -40,7 +42,7 @@ export async function defaultSettings(): Promise<UserSettings> {
     reviewLimit: await getConfigInt("study.default_review_limit"),
     order: "review-first", newOrder: "book", accent: "us", voice: "female", exSpeaker: "right",
     autoPlay: true, autoReadDetail: true, theme: "system", listMode: "both", aiProvider: "auto",
-    runWords: 50, runRepeat: 2, runDef: true, runSentence: "both", runExamples: 2, runGap: 2, runSpeed: 1, runKeepAwake: true,
+    runWords: 50, runRepeat: 2, runDef: true, runSentence: "both", runExamples: 2, runGap: 2, runSpeed: 1, runKeepAwake: true, runControls: "bottom",
   };
 }
 

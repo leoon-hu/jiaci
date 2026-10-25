@@ -7,7 +7,8 @@ import RateBar from "@/components/RateBar";
 import PomodoroButton from "@/components/Pomodoro";
 import { IconSpeaker, IconTap, IconX } from "@/components/Icons";
 import { useToast } from "@/components/Toast";
-import { api, localToday, ClientApiError } from "@/lib/client/api";
+import { api, localToday } from "@/lib/client/api";
+import { flushPendingRates, isRetriableRateError, stashPendingRate } from "@/lib/client/pending-rates";
 import { useMe } from "@/lib/client/useMe";
 import { onWordChanged } from "@/lib/client/word-events";
 import { useUser } from "@/components/UserContext";
@@ -19,10 +20,6 @@ import "./study.css";
 type Item = { wordId: string; spelling: string; display?: string | null; kind: "review" | "new"; phonetic: { us: string; uk: string } | null; examples: string[] };
 type TodayResp = { items: Item[]; stats: { newCount: number; reviewCount: number }; hasBook: boolean; bookId: string | null };
 const RESULT_TAG: Record<string, [string, string]> = { know: ["tag-result-know", "认识"], fuzzy: ["tag-review", "模糊"], master: ["tag-result-master", "已掌握"], reset: ["tag-result-reset", "重新记"], remove: ["tag-none", "移出"] };
-/** 离线暂存的打分按用户分开存 localStorage：同一设备换账号后，不把上一个账号的打分补交到新账号 */
-const pendingKey = (userId: string) => `aiword.pendingRates.${userId}`;
-function readPending(userId: string): unknown[] { try { return JSON.parse(localStorage.getItem(pendingKey(userId)) || "[]"); } catch { return []; } }
-function writePending(userId: string, list: unknown[]) { try { localStorage.setItem(pendingKey(userId), JSON.stringify(list)); } catch { /* ignore */ } }
 
 /** 学习卡片页（需求 3.2.2）：正面 → 点击显示答案（单词详情）→ 底部打分 → 下一个 */
 function Study() {
@@ -61,25 +58,11 @@ function Study() {
     return d;
   }, []);
 
-  // 离线暂存的打分：恢复后按存入顺序逐条补交，补完再拉今日队列（审计 F180 / F037）
+  // 离线暂存的打分（lib/client/pending-rates，与跑步模式共用）：恢复后按存入顺序逐条补交，补完再拉今日队列（审计 F180 / F037）
   useEffect(() => {
-    try { localStorage.removeItem("aiword.pendingRates"); } catch { /* ignore */ } // 旧版不分用户的 key，无法归属，直接清掉
     if (!userId) { setReplayed(true); return; }
     let on = true;
-    (async () => {
-      for (const item of readPending(userId)) {
-        try {
-          await api("/api/study/rate", { method: "POST", json: item });
-        } catch (e) {
-          // 4xx 是永久错误（词已删、参数不对），丢掉；网络 / 5xx 停下，剩下的留到下次
-          const st = e instanceof ClientApiError ? e.status : 0;
-          if (!(st >= 400 && st < 500)) break;
-        }
-        // 逐条从暂存里摘掉：整体覆盖会把补交期间新写入的打分一起丢掉
-        if (userId) writePending(userId, readPending(userId).filter((x) => (x as { clientTs?: string }).clientTs !== (item as { clientTs?: string }).clientTs));
-      }
-      if (on) setReplayed(true);
-    })();
+    flushPendingRates(userId).finally(() => { if (on) setReplayed(true); });
     return () => { on = false; };
   }, [userId]);
 
@@ -189,9 +172,8 @@ function Study() {
         : `下次复习：${res.nextInterval} 天后`);
     } catch (e) {
       // 只有网络不可用 / 服务端 5xx 才暂存重试；4xx 是永久错误，暂存下来只会每次进学习页反复重放（审计 F042）
-      const st = e instanceof ClientApiError ? e.status : 0;
-      const retriable = !(st >= 400 && st < 500);
-      if (retriable && userId) writePending(userId, [...readPending(userId), body]);
+      const retriable = isRetriableRateError(e);
+      if (retriable && userId) stashPendingRate(userId, body);
       requeue = r === "reset" || (r === "fuzzy" && (detail?.progress.interval ?? 0) <= 1);
       toast(retriable ? "网络不可用，打分已暂存，恢复后自动同步" : `没有保存成功：${(e as Error).message}`);
     } finally { setBusy(false); }

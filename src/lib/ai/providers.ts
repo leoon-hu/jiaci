@@ -25,6 +25,11 @@ export const AI_PEEK_SELECT = {
   aiOpenai: { select: { phoneticUs: true, phoneticUk: true, core: true, corePos: true, meanings: true } },
   aiDeepseek: { select: { phoneticUs: true, phoneticUk: true, core: true, corePos: true, meanings: true } },
 } as const;
+/** 只要核心义的地方（同类词的成员、搜索结果）：一行一句释义，别的列都不取 */
+export const AI_CORE_SELECT = {
+  aiOpenai: { select: { core: true, corePos: true } },
+  aiDeepseek: { select: { core: true, corePos: true } },
+} as const;
 /** 跑步模式（需求 3.2.6）每个词只朗读单词、核心义与第一条例句：音标给页面显示，其余字段不取 */
 export const AI_RUN_SELECT = {
   aiOpenai: { select: { phoneticUs: true, phoneticUk: true, core: true, corePos: true, examples: true } },

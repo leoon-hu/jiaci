@@ -21,6 +21,7 @@ const empty = (spelling: string, stopword = false) => ({ spelling, display: null
 /**
  * 点词弹框（3.2.5）：按原形候选查词，只查不建——这里不校验拼写就 getOrCreateWord 的话，
  * 任何登录用户都能把任意字符串写进全局 word 表（审计 F010 / F011）。
+ * 不放在 /api/words/ 下面：那里的静态段会抢走 /api/words/[spelling] 里同名的词（原来的 /api/words/peek 让 peek 这个词的详情一直 400）。
  */
 export const GET = withUser(async (req, _ctx, user) => {
   const u = new URL(req.url);

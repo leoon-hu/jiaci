@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import type { PublicWord as Data } from "@/lib/public-dict";
 import { AI_PROVIDER_LABEL } from "@/lib/ai/providers";
+import { lockedLabels } from "@/lib/locked";
 import WordFreqPanel from "@/components/WordFreqPanel";
 import Ipa from "./Ipa";
 import PubTokens from "./PubTokens";
@@ -17,7 +18,8 @@ function Section({ id, title, ai = false, children }: { id: string; title: strin
 
 /**
  * 公开词条页正文（匿名可看，供搜索引擎收录）：与登录版 WordDetail 同一份数据、同一套类名，
- * 去掉个人部分（状态、学习记录、备注、打分、反馈、来源切换），四个 Tab 摊成一列全部展开——爬虫不点折叠。
+ * 去掉个人部分（状态、学习记录、备注、打分、反馈、来源切换）与登录后才看的四块（换成一张卡片），
+ * 四个 Tab 摊成一列全部展开——爬虫不点折叠。
  */
 export default function PublicWord({ data }: { data: Data }) {
   const v = data.view;
@@ -34,6 +36,7 @@ export default function PublicWord({ data }: { data: Data }) {
   const related = (items: Array<{ w: string; m: string }>) => items.map((s, i) => <div className="confusable" key={i}><b lang="en">{tok(s.w)}</b><span>{s.m}</span></div>);
   // 带 next 的登录链接每个词一条，加 nofollow 免得爬虫挨个去抓（登录页的 canonical 也指回 /login）
   const loginNext = `/login?next=${encodeURIComponent(`/word/${encodeURIComponent(data.spelling)}`)}`;
+  const locked = lockedLabels(data.locked);
 
   return (
     <article className="entry pub-entry">
@@ -73,7 +76,7 @@ export default function PublicWord({ data }: { data: Data }) {
         <Section id="examples" title="例句" ai>
           {v.examples.map((e, i) => (
             <div className="example" key={i}>
-              <div className="ex-body"><div className="en" lang="en">{tok(e.en)}</div><div className="zh">{e.zh}{e.level && <span className="ex-level">{LEVEL[e.level]}</span>}</div></div>
+              <div className="ex-body"><div className="en" lang="en">{tok(e.en)}</div><div className="zh">{data.brand?.index === i ? e.zh + data.brand.text : e.zh}{e.level && <span className="ex-level">{LEVEL[e.level]}</span>}</div></div>
               <SpeakButton text={e.en} sentence className="btn btn-icon sm btn-ghost ex-speak" />
             </div>
           ))}
@@ -96,12 +99,6 @@ export default function PublicWord({ data }: { data: Data }) {
 
       {v.synonyms.length > 0 && <Section id="synonyms" title="近义词辨析" ai>{related(v.synonyms)}</Section>}
       {v.antonyms.length > 0 && <Section id="antonyms" title="反义词" ai>{related(v.antonyms)}</Section>}
-      {v.confusables.length > 0 && <Section id="confusables" title="易混词" ai>{related(v.confusables)}</Section>}
-      {v.mistakes.length > 0 && (
-        <Section id="mistakes" title="常见错误" ai>
-          {v.mistakes.map((m, i) => <div className="mistake" key={i}><div className="wrong" lang="en">✕ <s>{m.wrong}</s></div><div className="fix" lang="en">✓ {m.right}</div>{m.note && <div className="why">{m.note}</div>}</div>)}
-        </Section>
-      )}
       {v.inflections.length > 0 && <Section id="inflections" title="词形变化"><div className="kv-list">{v.inflections.map((f, i) => <div className="kv" key={i}><span className="en" lang="en">{tok(f.w)}</span><span className="zh">{f.label}</span></div>)}</div></Section>}
       {v.family.length > 0 && <Section id="family" title="词族" ai>{family(v.family)}</Section>}
       {v.cognates.length > 0 && <Section id="cognates" title="同根词" ai>{family(v.cognates)}</Section>}
@@ -116,14 +113,14 @@ export default function PublicWord({ data }: { data: Data }) {
         </Section>
       )}
 
-      {v.mnemonic && <Section id="mnemonic" title="助记" ai><div className="mnemonic">{v.mnemonic}</div></Section>}
-      {v.etymology && (v.etymology.parts.length > 0 || v.etymology.origin) && (
-        <Section id="etymology" title="词源与构词" ai>
-          <div className="etym">
-            {v.etymology.parts.length > 0 && <div className="parts">{v.etymology.parts.map((pt, i) => <span key={i}>{i > 0 && <span className="plus">+</span>}<span className="part">{pt.part}<small>{pt.meaning}</small></span></span>)}</div>}
-            {v.etymology.origin && <p className="origin">{v.etymology.origin}</p>}
-          </div>
-        </Section>
+      {/* 助记 / 词源与构词 / 易混词 / 常见错误登录后才看（需求 3.7 P13）：内容取数时就去掉了，这里只列本词有的几块 */}
+      {locked.length > 0 && (
+        <section className="entry-section pub-locked" id="locked">
+          <h2>登录后可看</h2>
+          <div className="chips">{locked.map((l) => <span className="chip" key={l}>{l}</span>)}</div>
+          <p>邮箱验证码登录，不用密码，第一次登录自动注册。</p>
+          <Link className="btn btn-primary" href={loginNext} rel="nofollow">免费登录查看</Link>
+        </section>
       )}
 
       <Section id="frequency" title="词频与标签"><WordFreqPanel freq={data.freq} kind={data.kind} /></Section>

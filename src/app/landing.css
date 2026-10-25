@@ -56,6 +56,8 @@
 
 @media (max-width:767px){
   .land{padding:0 16px 32px}
+  /* 窄屏多了一个搜索图标（需求 3.9），间距收一点，360px 宽也排得下 */
+  .land-nav{gap:12px}
   .land-hero{padding:28px 0 20px}
   .land-hero h1{font-size:28px}
   .land-lead br{display:none}
