@@ -32,8 +32,9 @@
 /* 例句字号 2026-10-14 放大约 1.2 倍（原来 22 / 18px，手机 19 / 16px）；不高亮正在读的句子（做过又取消了） */
 .run-example .en{font-size:26px;line-height:1.45;font-weight:500}
 .run-example .zh{color:var(--muted);font-size:22px;line-height:1.5;margin-top:4px}
-/* 例句里的本词：主色加粗，不用底色（深色主题下 mark 的默认黄底看不清） */
-.run-example mark.hw{background:none;color:var(--primary);font-weight:800;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
+/* 例句里每个词可点（WordTokens 的 .w，全局样式给了 hover 底色）；本词 .hw 主色加粗加下划线，不用底色（深色主题下黄底看不清） */
+.run-example .w{padding:0 2px;border-radius:4px}
+.run-example .w.hw{color:var(--primary);font-weight:800;text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:4px}
 .run-bottom{width:100%;display:flex;flex-direction:column;align-items:center;gap:12px}
 .run-hint{min-height:1.6em}
 /*
@@ -64,6 +65,12 @@
 .run-mi .t small{font-size:12.5px;color:var(--muted);line-height:1.35}
 .run-mi.danger{color:var(--danger)}
 .run-mi.danger:active{background:var(--danger-soft)}
+/* 快捷键提示：只在有鼠标的设备上画，鼠标悬停在菜单上时淡入（与详情页打分按钮的「快捷键 1」同一条规则：平时不显示、手机上不显示） */
+.run-kbd{display:none;flex:none;margin-left:auto;font:inherit;font-size:12px;line-height:1;color:var(--faint);border:1px solid var(--border);border-radius:6px;padding:4px 7px;min-width:14px;text-align:center;opacity:0;transition:opacity .15s}
+@media (hover:hover) and (pointer:fine){
+  .run-kbd{display:inline-block}
+  .run-menu:hover .run-kbd,.run-mi:focus-visible .run-kbd{opacity:1}
+}
 .run-page .row.setting{gap:14px}
 .run-page .row.setting .ctl{flex:none;display:flex;align-items:center;gap:8px}
 .run-list .row.current{background:var(--primary-soft)}

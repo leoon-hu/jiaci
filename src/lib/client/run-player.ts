@@ -19,6 +19,9 @@ export type RunState = {
   words: RunWord[];
   /** 当前词在 words 里的下标；还没开始时是第一个会播的词 */
   index: number;
+  /** 当前词是这次还在播的第几个（1 起）/ 这次还在播的词数——去掉的（加进度 / 已掌握）与没有音频被跳过的都不算；顶部计数与锁屏控件同一口径 */
+  pos: number;
+  playable: number;
   /** 下载进度（去重后的片段数）；播放中改设置需要补下载片段时也走这里（done < total 就是在补） */
   progress: { done: number; total: number };
   /** 一段音频都没有、被跳过的词数 */
@@ -34,7 +37,7 @@ export type RunState = {
   error: string;
 };
 
-const INITIAL: RunState = { status: "idle", words: [], index: -1, progress: { done: 0, total: 0 }, skipped: 0, duration: 0, dropped: [], echo: null, bookId: null, error: "" };
+const INITIAL: RunState = { status: "idle", words: [], index: -1, pos: 0, playable: 0, progress: { done: 0, total: 0 }, skipped: 0, duration: 0, dropped: [], echo: null, bookId: null, error: "" };
 let state: RunState = INITIAL;
 const listeners = new Set<() => void>();
 function set(patch: Partial<RunState>) { state = { ...state, ...patch }; listeners.forEach((l) => l()); }
@@ -118,6 +121,8 @@ function silence(frames: number): ArrayBuffer {
 }
 
 const active = () => cues.length > 0 && state.status !== "idle" && state.status !== "preparing";
+/** 当前词变了：下标与「第几个」一起更新 */
+const cursorOf = (word: number) => ({ index: word, pos: cues.findIndex((c) => c.word === word) + 1 });
 
 function ensureAudio(): HTMLAudioElement {
   if (audio) return audio;
@@ -130,7 +135,7 @@ function ensureAudio(): HTMLAudioElement {
     const t = a.currentTime;
     const c = cues[cueIndexAt(cues, t)];
     if (!c) return;
-    if (c.word !== state.index) { set({ index: c.word }); updateMetadata(); }
+    if (c.word !== state.index) { set(cursorOf(c.word)); updateMetadata(); }
     // 重放的几遍读完了（或者熄屏期间已经过去了）：等到当前词末尾的静音里再把多出来的几遍拼掉，位置照旧，听不出来
     if (echo && t >= c.end - GAP_EDGE) { echo = null; build(c.word, state.status === "playing", { fromEnd: c.end - t }); }
   });
@@ -150,11 +155,10 @@ function updateMetadata() {
   if (!("mediaSession" in navigator)) return;
   const w = state.words[state.index];
   if (!w) { navigator.mediaSession.metadata = null; return; }
-  const pos = cues.findIndex((c) => c.word === state.index) + 1;
   navigator.mediaSession.metadata = new MediaMetadata({
     title: w.display ?? w.spelling,
     artist: w.def ?? w.phonetic?.us ?? "",
-    album: `AI加词 · 跑步模式 ${pos} / ${cues.length}`,
+    album: `AI加词 · 跑步模式 ${state.pos} / ${state.playable}`,
     artwork: [{ src: "/icons/icon-512.png", sizes: "512x512", type: "image/png" }],
   });
 }
@@ -228,7 +232,7 @@ function build(atWord: number, resume: boolean, at: { offset?: number; fromEnd?:
   const ci = Math.max(0, cues.findIndex((c) => c.word === atWord));
   const c = cues[ci];
   const startAt = !c ? 0 : at.fromEnd !== undefined ? Math.max(c.start, c.end - at.fromEnd) : Math.min(c.end, c.start + (at.offset ?? 0));
-  set({ skipped: plan.skipped.length, duration: plan.duration, index: c?.word ?? -1, echo });
+  set({ skipped: plan.skipped.length, duration: plan.duration, playable: cues.length, ...cursorOf(c?.word ?? -1), echo });
   updateMetadata();
   const onMeta = () => {
     a.removeEventListener("error", onErr);
@@ -294,7 +298,7 @@ function seekToCue(ci: number) {
   // 切词时作废还没读完的重放：按没有重放的计划重拼、从目标词开头播（不重拼的话这一轮循环回来那个词还会读三遍）
   if (echo) { echo = null; build(c.word, state.status === "playing"); return; }
   a.currentTime = c.start;
-  set({ index: c.word });
+  set(cursorOf(c.word));
   updateMetadata();
 }
 export function next() { if (audio && cues.length) seekToCue(cueIndexAt(cues, audio.currentTime) + 1); }

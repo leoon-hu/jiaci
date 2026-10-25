@@ -14,7 +14,7 @@ type Peek = { spelling: string; display?: string | null; status: WordStatus; pho
  * `onCollect` = 底部「加入我的词库」（3.3.4），传的是查到的原形；选择框由调用方画在小框外面——
  * 画在里面的话，点选择框会被「点别处收起小框」的监听当成点了外面，连选择框一起卸掉
  */
-export default function WordPeek({ word, book, accent, voice = "female", onClose, onCollect, autoSpeak = true }: { word: string | null; book?: string | null; accent: "us" | "uk"; voice?: "female" | "male"; onClose: () => void; onCollect?: (spelling: string) => void; autoSpeak?: boolean }) {
+export default function WordPeek({ word, book, accent, voice = "female", onClose, onCollect, autoSpeak = true, bottom: bottomProp }: { word: string | null; book?: string | null; accent: "us" | "uk"; voice?: "female" | "male"; onClose: () => void; onCollect?: (spelling: string) => void; autoSpeak?: boolean; /** 离视口底部多远：默认贴在打分栏上面；跑步页传进来，让小框在圆形按钮上方 */ bottom?: number | string }) {
   const vk = voiceKeyOf(accent, voice);
   const [data, setData] = useState<Peek | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,7 +39,7 @@ export default function WordPeek({ word, book, accent, voice = "female", onClose
   }, [word, onClose]);
   if (!word) return null;
   const bar = typeof document !== "undefined" ? document.querySelector<HTMLElement>(".rate-bar") : null;
-  const bottom = (bar?.offsetHeight ?? 0) + 10;
+  const bottom = bottomProp ?? (bar?.offsetHeight ?? 0) + 10;
   const status = data?.status ?? "none";
   return (
     <div className="peek" id="peek" style={{ bottom }} onClick={() => router.push(`/word/${encodeURIComponent(data?.spelling ?? word)}${book ? `?book=${book}` : ""}`, { scroll: false })}>

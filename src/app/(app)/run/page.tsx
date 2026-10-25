@@ -1,17 +1,19 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import CollectModal, { type CollectTarget } from "@/components/CollectModal";
 import { IconPlay, IconRepeat, IconX } from "@/components/Icons";
 import RunControls, { type RunAct } from "@/components/RunControls";
 import RunStopConfirm from "@/components/RunStopConfirm";
 import { useToast } from "@/components/Toast";
+import WordPeek from "@/components/WordPeek";
+import WordTokens, { PickCtx } from "@/components/WordTokens";
 import { api, localToday } from "@/lib/client/api";
 import { flushPendingRates, isRetriableRateError, stashPendingRate } from "@/lib/client/pending-rates";
 import { useMe } from "@/lib/client/useMe";
 import { voiceKeyOf } from "@/lib/client/speech";
 import { applyOptions, dropWord, jumpTo, next, pause, play, prepare, prev, replayCurrent, useRunPlayer, type RunOptions, type RunWord } from "@/lib/client/run-player";
 import { useScreenWakeLock, useWakeLockSupported } from "@/lib/client/wake-lock";
-import { isHeadwordToken, tokenize } from "@/lib/lemma";
 import type { UserSettings } from "@/lib/settings";
 import "./run.css";
 
@@ -31,10 +33,6 @@ function Seg<T extends string | number>({ value, options, onChange }: { value: T
 function Switch({ checked, onChange }: { checked: boolean; onChange: (v: boolean) => void }) {
   return <label className="switch"><input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} /><span /></label>;
 }
-/** 例句正文：本词（及其变形）高亮，跑步中一眼能找到它在句子里的位置 */
-function Highlight({ text, headword }: { text: string; headword: string }) {
-  return <>{tokenize(text).map((t, i) => (t.word && isHeadwordToken(t.text, headword) ? <mark key={i} className="hw">{t.text}</mark> : <span key={i}>{t.text}</span>))}</>;
-}
 /** 单词大字：越长字越小，长词与短语在手机上也放得下一行或两行 */
 const wordSize = (s: string) => (s.length > 14 ? " longer" : s.length > 10 ? " long" : "");
 
@@ -52,6 +50,12 @@ export default function RunPage() {
   const [embedded, setEmbedded] = useState(false);
   const [starting, setStarting] = useState(false);
   const [stopAsk, setStopAsk] = useState(false);
+  // 例句里点词（需求 3.2.6 / 3.2.5）：与详情页同一个点词小框；小框不自动发音（会盖住正在播的音频），换词时收起
+  const [peek, setPeek] = useState<string | null>(null);
+  const [collectFor, setCollectFor] = useState<CollectTarget | null>(null);
+  const onPick = useCallback((base: string) => setPeek(base), []);
+  const closePeek = useCallback(() => setPeek(null), []);
+  const collectPeek = useCallback((spelling: string) => { setPeek(null); setCollectFor({ spelling }); }, []);
   const wakeLockOk = useWakeLockSupported();
 
   const load = () => fetchRun(settings.runWords).then(setData).catch((e) => setLoadErr((e as Error).message));
@@ -89,7 +93,9 @@ export default function RunPage() {
   const cur = st.index >= 0 ? words[st.index] : null;
   const playing = st.status === "playing";
   const active = playing || st.status === "paused";
-  const position = st.index >= 0 ? `${st.index + 1} / ${words.length}` : words.length ? `${words.length} 词` : "";
+  // 计数只算这次还在播的词：加进度 / 已掌握去掉的、没有音频跳过的都不算（与锁屏控件同一口径）
+  const position = st.index >= 0 ? `${st.pos} / ${st.playable}` : words.length ? `${words.length} 词` : "";
+  useEffect(() => setPeek(null), [st.index]);
   /** 改设置后在补下载片段（播放不停） */
   const toppingUp = active && st.progress.done < st.progress.total;
   // 播放时保持亮屏：只在本页播放中持有唤醒锁（离开本页、暂停、停止都放掉；小条在别处照播但不需要亮屏）
@@ -180,14 +186,17 @@ export default function RunPage() {
           </div>
           {settings.runDef && cur.def && <div className="run-def">{cur.def}</div>}
           {settings.runSentence !== "off" && cur.examples.length > 0 && (
-            <div className="run-examples">
-              {cur.examples.slice(0, settings.runExamples).map((e, i) => (
-                <div key={i} className="run-example">
-                  <div className="en"><Highlight text={e.en} headword={cur.spelling} /></div>
-                  <div className="zh">{e.zh}</div>
-                </div>
-              ))}
-            </div>
+            // 例句里每个词可点（WordTokens 的 .w），本词及其变形 .hw 高亮
+            <PickCtx.Provider value={onPick}>
+              <div className="run-examples">
+                {cur.examples.slice(0, settings.runExamples).map((e, i) => (
+                  <div key={i} className="run-example">
+                    <div className="en"><WordTokens text={e.en} headword={cur.spelling} /></div>
+                    <div className="zh">{e.zh}</div>
+                  </div>
+                ))}
+              </div>
+            </PickCtx.Provider>
           )}
         </div>
       )}
@@ -210,6 +219,9 @@ export default function RunPage() {
       {hero}
       {/* 停止会丢掉准备好的音频，菜单里的「停止」点了先确认（RunStopConfirm） */}
       {active && <RunControls pos={settings.runControls} playing={playing} onAct={onAct} />}
+      {/* 点词小框画在圆形按钮上方；点小框进详情是盖在本页上的浮层，播放不停 */}
+      <WordPeek word={peek} book={st.bookId} accent={settings.accent} voice={settings.voice} onClose={closePeek} onCollect={collectPeek} autoSpeak={false} bottom={settings.runControls === "bottom" ? "calc(96px + env(safe-area-inset-bottom))" : 12} />
+      <CollectModal target={collectFor} onClose={() => setCollectFor(null)} />
       {words.length > 0 && (
         <>
           <div className="section-title">播放设置</div>

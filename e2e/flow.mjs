@@ -244,6 +244,8 @@ if (row) {
   // 加进度：按「认识」记一次，红色未开始 → 黄色学习中
   const before1 = await pieAt(1);
   const prog = await dragToOpt(1, "know", "e2e-drag-progress");
+  // 新间隔要先向服务端拿预览结果才会改行状态：等它回来（dev 第一次编译那条接口要几百毫秒，立刻读会读到旧状态）
+  await waitFor("document.querySelectorAll('.s-content .pie')[1]?.className.includes('st-learning')", 4000);
   const after1 = await pieAt(1);
   const progToast = await evalJs("document.querySelector('.toast.show')?.textContent");
   log.push(`列表：把第 2 行拖到「${prog.picked}」→ ${before1?.match(/st-\w+/)?.[0]} → ${after1?.match(/st-\w+/)?.[0]} ${before1?.includes("st-new") && after1?.includes("st-learning") ? "✓" : "✗"}，提示「${progToast}」 ${progToast?.includes("已记一次") ? "✓" : "✗"}`);
@@ -527,6 +529,10 @@ log.push(`详情：apple 的同类词在关联词 Tab（释义 Tab 里没有 ${!
   const start = await rect(".run-start");
   await mouse("mousePressed", start.x + start.w / 2, start.y + start.h / 2); await mouse("mouseReleased", start.x + start.w / 2, start.y + start.h / 2);
   const PLAYING = "document.querySelector('.run-fab[data-state=\"playing\"]')";
+  const openMenu = async () => { await evalJs("document.querySelector('.run-fab')?.click()"); await waitFor("document.querySelector('.run-menu')", 2000); await sleep(250); };
+  const act = async (a) => { await openMenu(); await evalJs(`document.querySelector('.run-mi[data-act="${a}"]')?.click()`); };
+  const press = async (key, code) => { await send("Input.dispatchKeyEvent", { type: "keyDown", key, code, ...(key.length === 1 ? { text: key } : {}) }); await send("Input.dispatchKeyEvent", { type: "keyUp", key, code }); await sleep(300); };
+  const ensurePlaying = async () => { if (!(await evalJs(`!!${PLAYING}`))) { await act("toggle"); await waitFor(PLAYING, 3000); } };
   const settingIs = (key, value) => evalJs(`(async()=>{for(let i=0;i<20;i++){const s=await fetch('/api/settings').then(r=>r.json()); if(s[${JSON.stringify(key)}]===${JSON.stringify(value)}) return true; await new Promise(r=>setTimeout(r,250));} return false})()`);
   const playing = await waitFor(PLAYING, 8000);
   const wlAcquired = await waitFor("window.__wl && window.__wl.req >= 1", 3000);
@@ -535,7 +541,7 @@ log.push(`详情：apple 的同类词在关联词 Tab（释义 Tab 里没有 ${!
   // 首屏：例句（默认两条，中英对照、本词高亮）与悬浮在底部正中的圆形操作按钮，整块撑满一屏、正文不被按钮盖住
   const exN = await evalJs("document.querySelectorAll('.run-example').length");
   const exZh = await evalJs("!![...document.querySelectorAll('.run-example .zh')].every(e=>e.textContent.trim())");
-  const exHw = await evalJs("[...document.querySelectorAll('.run-example mark.hw')].map(m=>m.textContent.toLowerCase()).join(',')");
+  const exHw = await evalJs("[...document.querySelectorAll('.run-example .w.hw')].map(m=>m.textContent.toLowerCase()).join(',')");
   const heroH = await evalJs("Math.round(document.querySelector('.run-hero.now').getBoundingClientRect().height)");
   const fab = await rect(".run-fab.bottom");
   const fabClear = await evalJs("(()=>{const f=document.querySelector('.run-fab').getBoundingClientRect(); const h=document.querySelector('.run-hint').getBoundingClientRect(); return h.bottom <= f.top})()");
@@ -544,9 +550,21 @@ log.push(`详情：apple 的同类词在关联词 Tab（释义 Tab 里没有 ${!
   // 标签与单词同一行、没有音标
   const tagInline = await evalJs("!!document.querySelector('.run-word-line .tag') && !document.querySelector('.run-phonetic')");
   log.push(`跑步：标签与单词同一行、无音标 ${tagInline ? "✓" : "✗"}`);
+  // 例句里点词：弹出与详情页同一个点词小框（在圆形按钮上方），点小框进单词详情浮层，返回后播放页还在、仍在播
+  const picked = await evalJs("(()=>{const w=[...document.querySelectorAll('.run-example .en .w')].find(w=>!w.classList.contains('hw')&&w.textContent.length>=4); if(!w) return null; w.click(); return w.dataset.w})()");
+  const peekUp = await waitFor("document.querySelector('.peek .peek-word')?.textContent && !document.querySelector('.peek .faint')", 6000);
+  const peekWord = await evalJs("document.querySelector('.peek .peek-word')?.textContent");
+  const peekAbove = await evalJs("(()=>{const p=document.querySelector('.peek'),f=document.querySelector('.run-fab'); return !!p&&!!f&&p.getBoundingClientRect().bottom<=f.getBoundingClientRect().top})()");
+  const peekPlaying = await evalJs(`!!${PLAYING}`);
+  await shot("e2e-run-peek");
+  await evalJs("document.querySelector('.peek .go')?.click()");
+  const sheet = await waitFor("document.querySelector('.word-sheet .entry-title .spelling')", 8000);
+  const sheetWord = await evalJs("document.querySelector('.word-sheet .entry-title .spelling')?.textContent");
+  await evalJs("history.back()"); await sleep(800);
+  const backOk = await waitFor("!document.querySelector('.word-sheet') && document.querySelector('.run-fab') && document.querySelector('.run-word')", 5000);
+  await ensurePlaying();
+  log.push(`跑步：点例句里的「${picked}」→ 小框「${peekWord}」 ${peekUp && peekWord ? "✓" : "✗"}，在圆形按钮上方 ${peekAbove ? "✓" : "✗"}、弹出时不打断播放 ${peekPlaying ? "✓" : "✗"}；点小框进详情浮层「${sheetWord}」 ${sheet && sheetWord ? "✓" : "✗"}，返回仍是播放页 ${backOk ? "✓" : "✗"}`);
   // 点圆形按钮弹出竖排菜单：七项顺序固定、后三项带说明、菜单在按钮上方、每项够高；点遮罩收起
-  const openMenu = async () => { await evalJs("document.querySelector('.run-fab')?.click()"); await waitFor("document.querySelector('.run-menu')", 2000); await sleep(250); };
-  const act = async (a) => { await openMenu(); await evalJs(`document.querySelector('.run-mi[data-act="${a}"]')?.click()`); };
   await openMenu();
   const items = await evalJs("[...document.querySelectorAll('.run-menu .run-mi')].map(b=>b.getAttribute('aria-label')).join('/')");
   const hints = await evalJs("[...document.querySelectorAll('.run-menu .run-mi small')].map(s=>s.textContent).join('|')");
@@ -566,6 +584,25 @@ log.push(`详情：apple 的同类词在关联词 Tab（释义 Tab 里没有 ${!
   await evalJs("document.querySelector('.run-mi[data-act=\"toggle\"]')?.click()");
   const resumed = await waitFor(PLAYING, 3000);
   log.push(`跑步：菜单暂停 ${pausedFab && pausedHint === "已暂停" ? "✓" : "✗"}（提示「${pausedHint}」）、菜单项变「${resumeLabel}」 ${resumeLabel === "继续" ? "✓" : "✗"}；继续 ${resumed ? "✓" : "✗"}`);
+  // 快捷键：空格 暂停 / 继续、→ 下一个、R 重放（再按 → 作废）、S 弹停止确认（Esc 关掉）；菜单开着时按键也生效并收起菜单
+  await press(" ", "Space");
+  const kPaused = await waitFor("document.querySelector('.run-fab[data-state=\"paused\"]')", 2000);
+  await press(" ", "Space");
+  const kResumed = await waitFor(PLAYING, 3000);
+  const kw0 = await evalJs("document.querySelector('.run-word')?.textContent");
+  await openMenu(); await press("ArrowRight", "ArrowRight");
+  const kw1 = await evalJs("document.querySelector('.run-word')?.textContent");
+  const kMenuClosed = await evalJs("!document.querySelector('.run-menu')");
+  await press("r", "KeyR");
+  const kEcho = await evalJs("document.querySelector('.run-echo')?.textContent");
+  await press("ArrowRight", "ArrowRight");
+  const kEchoGone = await evalJs("!document.querySelector('.run-echo')");
+  await press("s", "KeyS");
+  const kStopAsk = await waitFor("[...document.querySelectorAll('.modal h3')].some(h=>h.textContent.includes('停止跑步模式'))", 2000);
+  await press("Escape", "Escape");
+  const kStopClosed = await waitFor("!document.querySelector('.modal-backdrop.open')", 2000);
+  const kStillPlaying = await evalJs(`!!${PLAYING}`);
+  log.push(`跑步：快捷键 空格暂停 ${kPaused ? "✓" : "✗"}、再按继续 ${kResumed ? "✓" : "✗"}；菜单开着按 → ${kw0} → ${kw1} ${kw1 && kw1 !== kw0 ? "✓" : "✗"} 且菜单收起 ${kMenuClosed ? "✓" : "✗"}；R 重放标记「${kEcho}」 ${kEcho === "×2" ? "✓" : "✗"}、切词后作废 ${kEchoGone ? "✓" : "✗"}；S 弹停止确认 ${kStopAsk ? "✓" : "✗"}、Esc 关掉 ${kStopClosed ? "✓" : "✗"}、仍在播 ${kStillPlaying ? "✓" : "✗"}`);
   await act("next"); await sleep(400);
   const w1 = await evalJs("document.querySelector('.run-word')?.textContent");
   // 一个词（两遍 + 释义 + 例句 + 2 秒间隔）十几秒，等它自己走到下一个
@@ -608,21 +645,24 @@ log.push(`详情：apple 的同类词在关联词 Tab（释义 Tab 里没有 ${!
   const todayHas = async (sp) => evalJs(`fetch('/api/study/today?date='+(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})()).then(r=>r.json()).then(r=>r.items.some(i=>(i.display??i.spelling)===${JSON.stringify(sp)}))`);
   const wp = await evalJs("document.querySelector('.run-word')?.textContent");
   const beforeP = await todayHas(wp);
+  const countBefore = await evalJs("document.querySelector('.run-count')?.textContent");
   await act("progress"); await sleep(1500);
+  const countAfter = await evalJs("document.querySelector('.run-count')?.textContent");
   const wpNext = await evalJs("document.querySelector('.run-word')?.textContent");
   const pToast = await evalJs("document.querySelector('.toast.show')?.textContent");
   const pRow = await evalJs(`(()=>{const r=[...document.querySelectorAll('.run-list .row')].find(r=>r.querySelector('.title')?.textContent===${JSON.stringify(wp)}); return r ? r.classList.contains('dropped')+':'+r.querySelector('.tag')?.textContent : null})()`);
   const afterP = await todayHas(wp);
   const pPlaying = await evalJs(`!!${PLAYING}`);
-  log.push(`跑步：加进度 ${wp} → 立刻换到 ${wpNext} ${wpNext && wpNext !== wp ? "✓" : "✗"}，toast「${pToast}」 ${/^已加进度，下次复习 \d+ 天后，本次不再播放$/.test(pToast ?? "") ? "✓" : "✗"}，词表那行 ${pRow} ${pRow === "true:本次不播" ? "✓" : "✗"}，今日队列里 ${beforeP ? "原本有" : "原本没有"} → ${afterP ? "还有 ✗" : "没有了 ✓"}，仍在播 ${pPlaying ? "✓" : "✗"}`);
+  log.push(`跑步：加进度 ${wp} → 立刻换到 ${wpNext} ${wpNext && wpNext !== wp ? "✓" : "✗"}，toast「${pToast}」 ${/^已加进度，下次复习 \d+ 天后，本次不再播放$/.test(pToast ?? "") ? "✓" : "✗"}，词表那行 ${pRow} ${pRow === "true:本次不播" ? "✓" : "✗"}，今日队列里 ${beforeP ? "原本有" : "原本没有"} → ${afterP ? "还有 ✗" : "没有了 ✓"}，仍在播 ${pPlaying ? "✓" : "✗"}；顶部计数 ${countBefore} → ${countAfter} ${(() => { const a = /(\d+) \/ (\d+)/.exec(countBefore ?? ""), b = /(\d+) \/ (\d+)/.exec(countAfter ?? ""); return a && b && Number(b[2]) === Number(a[2]) - 1 && Number(b[1]) <= Number(b[2]); })() ? "✓" : "✗"}`);
   const wm = wpNext;
-  await act("master"); await sleep(1500);
+  await press("3", "Digit3"); await sleep(1500);
   const wmNext = await evalJs("document.querySelector('.run-word')?.textContent");
   const mToast = await evalJs("document.querySelector('.toast.show')?.textContent");
   const mRow = await evalJs(`(()=>{const r=[...document.querySelectorAll('.run-list .row')].find(r=>r.querySelector('.title')?.textContent===${JSON.stringify(wm)}); return r ? r.classList.contains('dropped') : null})()`);
   const afterM = await todayHas(wm);
   const mStatus = await evalJs(`fetch('/api/wordbooks/${fixture.id}/words?status=mastered').then(r=>r.json()).then(r=>(r.rows||[]).some(i=>(i.display??i.spelling)===${JSON.stringify(wm)})).catch(()=>null)`);
-  log.push(`跑步：已掌握 ${wm} → 换到 ${wmNext} ${wmNext && wmNext !== wm ? "✓" : "✗"}，toast「${mToast}」 ${mToast === "已标记为已掌握，以后不再学习，本次不再播放" ? "✓" : "✗"}，词表那行变灰 ${mRow ? "✓" : "✗"}，今日队列里没有了 ${!afterM ? "✓" : "✗"}，列表里是已掌握 ${mStatus === true ? "✓" : "✗ " + mStatus}`);
+  const countAfterM = await evalJs("document.querySelector('.run-count')?.textContent");
+  log.push(`跑步：已掌握（快捷键 3）${wm} → 换到 ${wmNext} ${wmNext && wmNext !== wm ? "✓" : "✗"}，toast「${mToast}」 ${mToast === "已标记为已掌握，以后不再学习，本次不再播放" ? "✓" : "✗"}，词表那行变灰 ${mRow ? "✓" : "✗"}，今日队列里没有了 ${!afterM ? "✓" : "✗"}，列表里是已掌握 ${mStatus === true ? "✓" : "✗ " + mStatus}，计数 ${countAfter} → ${countAfterM} ${(() => { const a = /(\d+) \/ (\d+)/.exec(countAfter ?? ""), b = /(\d+) \/ (\d+)/.exec(countAfterM ?? ""); return a && b && Number(b[2]) === Number(a[2]) - 1; })() ? "✓" : "✗"}`);
   // 操作按钮位置：改「上方」→ 圆形按钮到顶栏下面、菜单向下展开，随账号保存；改回下方
   await evalJs("[...[...document.querySelectorAll('.row.setting')].find(r=>r.textContent.includes('操作按钮位置')).querySelectorAll('.seg button')].find(b=>b.textContent==='上方')?.click()");
   const fabTop = await waitFor("document.querySelector('.run-fab.top')", 3000);
