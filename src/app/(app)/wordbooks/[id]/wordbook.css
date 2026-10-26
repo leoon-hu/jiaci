@@ -78,21 +78,22 @@
 @media (max-width:767px){.s-content .due{display:none}}
 .pie{width:16px;height:16px;border-radius:50%;border:2px solid var(--c);box-sizing:border-box;flex:none;display:inline-block;background:conic-gradient(var(--c) calc(var(--p) * 1%), transparent 0)}
 .pie.st-mastered{--c:var(--st-green)}.pie.st-learning{--c:var(--st-yellow)}.pie.st-new{--c:var(--st-red)}.pie.st-none{--c:var(--st-grey)}
+/* 七种操作的颜色：拖拽按钮条、跟手卡片、多选操作栏三处同一套，与对应的状态色一致。
+   「删除」（只有自建词库）比「移出」重，用暗红与「重新记」的红区分开 */
+.s-opt.cancel,.s-chip.cancel,.sel-bar .act-cancel{--c:#94a3b8}
+.s-opt.bookmark,.s-chip.bookmark{--c:var(--primary)}
+.s-opt.reset,.s-chip.reset,.sel-bar .act-reset{--c:var(--st-red)}
+.s-opt.know,.s-chip.know,.sel-bar .act-know{--c:var(--st-yellow)}
+.s-opt.master,.s-chip.master,.sel-bar .act-master{--c:var(--st-green)}
+.s-opt.remove,.s-chip.remove,.sel-bar .act-remove{--c:#475569}
+.s-opt.delete,.s-chip.delete,.sel-bar .act-delete{--c:#991b1b}
 /* 拖动时露出的操作按钮条（顺序固定，等宽铺满整行；把词拖到哪个上面松手就执行哪个）。
    不拖时用 visibility 藏而不是 display:none：拖拽判定按每个按钮的真实位置量，得一直有布局（第一下移动时还没来得及重画） */
 .s-opts{position:absolute;inset:0;display:flex;visibility:hidden}
 .srow.dragging .s-opts{visibility:visible}
-.s-opt{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;color:#fff;font-size:13px;font-weight:700;filter:brightness(.82);transition:filter .12s}
+.s-opt{flex:1;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;background:var(--c);color:#fff;font-size:13px;font-weight:700;filter:brightness(.82);transition:filter .12s}
 .s-opt small{font-size:10px;font-weight:500;opacity:.85;white-space:nowrap}
 @media (max-width:359px){.s-opt small{display:none}}
-.s-opt.cancel{background:#94a3b8}
-.s-opt.know{background:var(--st-yellow)}
-.s-opt.reset{background:var(--st-red)}
-.s-opt.master{background:var(--st-green)}
-.s-opt.bookmark{background:var(--primary)}
-.s-opt.remove{background:#475569}
-/* 「删除」（只有自建词库）：从词库删掉，比「移出」重，用暗红与「重新记」的红区分开 */
-.s-opt.delete{background:#991b1b}
 .s-opt.active{filter:brightness(1.08)}
 .s-opt.active::before{content:"";position:absolute;inset:0;border:2px solid rgba(255,255,255,.9);border-radius:6px;box-sizing:border-box;pointer-events:none}
 /* 跟手的小卡片：拖动时整行内容收成它，落在哪个按钮上就执行哪个。
@@ -105,13 +106,6 @@
 /* 卡片上写着松手会执行什么：颜色与身下那个按钮一致 */
 .s-chip .a{flex:none;font-size:12px;font-weight:700;padding:1px 8px;border-radius:999px;color:#fff;background:var(--c)}
 .s-chip.on{border-color:var(--c)}
-.s-chip.cancel{--c:#94a3b8}
-.s-chip.bookmark{--c:var(--primary)}
-.s-chip.reset{--c:var(--st-red)}
-.s-chip.master{--c:var(--st-green)}
-.s-chip.remove{--c:#475569}
-.s-chip.delete{--c:#991b1b}
-.s-chip.know{--c:var(--st-yellow)}
 /* 松手：卡片飞向按钮中心（取消则飞回按下的位置）并淡出 */
 .s-chip.dropping{transition:transform .18s ease-out,opacity .18s ease-out;opacity:0}
 @media (prefers-reduced-motion:reduce){.s-chip.dropping{transition:opacity .18s}}
@@ -132,16 +126,14 @@
 /* 多选「加入词库」：不改学习状态，和下面一排彩色的状态操作分开放在第一行右边；手机上提示文字隐藏，靠 margin 推到最右 */
 .sel-bar .sel-collect{flex:none;margin-left:auto}
 .sel-bar .sel-collect svg{width:16px;height:16px}
-/* 操作按钮等分一排：.btn 默认左右各 18px 内边距、不换行，最小宽度是「文字 + 36px」，自建词库五个按钮（多了「删除」）
-   在 390px 宽的手机上就挤出屏幕。允许收窄到比内容还窄（min-width:0）、内边距收小；「取消」只占自己需要的宽度，
-   省下的给另外几个；窄屏再收紧间距、字小一号——三个字的按钮在 320px 宽时也不贴边 */
-.sel-bar .acts .btn{flex:1 1 0;min-width:0;padding:0 6px;color:#fff;font-weight:700;min-height:42px}
-.sel-bar .acts .act-cancel{flex:0 0 auto;padding:0 14px;background:var(--bg);color:var(--text);border-color:var(--border-strong)}
-@media (max-width:400px){.sel-bar .acts{gap:6px}.sel-bar .acts .btn{font-size:14px}.sel-bar .acts .act-cancel{padding:0 10px}}
-.sel-bar .act-reset{background:var(--st-red)}
-.sel-bar .act-master{background:var(--st-green)}
-.sel-bar .act-remove{background:#475569}
-.sel-bar .act-delete{background:#991b1b}
+/* 操作按钮与拖拽按钮条同一套：顺序、文字、下面一行小字说明、颜色与亮度都一样（只少「书签」），等宽铺满一排。
+   .btn 默认左右各 18px 内边距、不换行，自建词库六个按钮在 390px 宽的手机上就挤出屏幕：允许收窄到比内容还窄（min-width:0）、
+   内边距收小；窄屏再收紧间距、字小一号，320px 宽时说明那行与拖拽按钮条一样藏起来 */
+.sel-bar .acts .btn{flex:1 1 0;min-width:0;min-height:48px;padding:0 4px;flex-direction:column;gap:1px;background:var(--c);color:#fff;font-size:15px;font-weight:700;filter:brightness(.82);transition:filter .12s,transform .05s,opacity .15s}
+.sel-bar .acts .btn small{font-size:11px;font-weight:500;opacity:.85;white-space:nowrap;overflow:hidden;max-width:100%}
+.sel-bar .acts .btn:not(:disabled):hover{filter:brightness(1)}
+@media (max-width:400px){.sel-bar .acts{gap:6px}.sel-bar .acts .btn{font-size:14px;padding:0 2px}.sel-bar .acts .btn small{font-size:10px}}
+@media (max-width:359px){.sel-bar .acts .btn small{display:none}}
 .sel-bar .btn:disabled{opacity:.45;cursor:not-allowed}
 .page.has-selbar{padding-bottom:150px}
 @media (max-width:767px){.sel-bar{bottom:calc(var(--tab-h) + env(safe-area-inset-bottom));padding-bottom:10px}.sel-bar .row .grow{display:none}}

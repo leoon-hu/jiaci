@@ -5,14 +5,16 @@ import { prisma } from "@/lib/db";
 import { resolveToday } from "@/lib/dates";
 
 /**
- * 单词列表的批量状态操作（需求 3.3.5）：重新记 / 已掌握 / 移出，整批一个事务，每词写一条 study_log。
+ * 单词列表的批量操作（需求 3.3.5）：重新记 / 加进度 / 已掌握 / 移出，整批一个事务，每词写一条 study_log。
  * 列表页的滑动与多选操作先在本地生效、5 秒后才调用这里，所以撤销不需要服务端参与。
+ * 加进度的新间隔要服务端算：多选时先带 preview 只算不写，按返回的 items 本地刷新各行，到时再真正提交一次。
  */
 export const POST = withUser(async (req, _ctx, user) => {
   const body = z.object({
     wordIds: z.array(z.string()).min(1).max(500),
-    result: z.enum(["master", "reset", "remove"]),
+    result: z.enum(["know", "master", "reset", "remove"]),
     date: z.string().optional(),
+    preview: z.boolean().optional(),
     // 列表页所属的词库：开了独立进度就写那一套（需求 3.3.6）
     wordbookId: z.string().max(64).optional(),
   }).parse(await readJson(req));
@@ -22,6 +24,7 @@ export const POST = withUser(async (req, _ctx, user) => {
   const ids = Array.from(new Set(body.wordIds));
   const known = (await prisma.word.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((w) => w.id);
   // 来源标成 list：这些操作不该算进首页的「今日已完成」（审计 F024）
-  const { done } = await rateWordsBatch(user.id, known, body.result, today, scope);
-  return ok({ done, skipped: ids.length - done });
+  const { done, items } = await rateWordsBatch(user.id, known, body.result, today, scope, body.preview ?? false);
+  // skipped 是没按预期生效的词数（不存在的词、加进度被守卫拦下的）；逐词结果只有加进度要用
+  return ok({ done, skipped: ids.length - done, ...(body.result === "know" ? { items } : {}) });
 });

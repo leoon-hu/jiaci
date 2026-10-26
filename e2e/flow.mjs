@@ -282,6 +282,23 @@ if (row) {
     await send("Page.reload"); await sleep(3000);
     const s4 = await pieAt(3), s5 = await pieAt(4);
     log.push(`列表：批量「已掌握」提交并刷新后第 4、5 行 ${s4?.includes("st-mastered") && s5?.includes("st-mastered") ? "✓" : `✗（${s4} / ${s5}）`}`);
+    // 多选「加进度」：第 6 行（未开始）+ 第 4 行（刚标已掌握），前者记一次认识、后者跳过；按钮与拖拽按钮条同序（去掉书签）
+    const r6 = await rowRect(5);
+    await mouse("mousePressed", r6.x + r6.w / 2, r6.y + r6.h / 2); await sleep(700); await mouse("mouseReleased", r6.x + r6.w / 2, r6.y + r6.h / 2); await sleep(400);
+    await evalJs("document.querySelectorAll('.s-content')[3]?.click()"); await sleep(300);
+    const acts = await evalJs("JSON.stringify([...document.querySelectorAll('.sel-bar .acts .btn')].map(b=>b.firstChild?.textContent))");
+    log.push(`列表：多选操作栏按钮 ${acts} ${acts === JSON.stringify(["取消", "重新记", "加进度", "已掌握", "移出", "删除"]) ? "✓" : "✗"}`);
+    await evalJs("document.querySelectorAll('.s-content')[5]?.scrollIntoView({block:'center'})"); await sleep(300);
+    await shot("e2e-multiselect-know");
+    await evalJs("document.querySelector('.sel-bar .act-know')?.click()");
+    await waitFor("document.querySelector('.toast.with-action.show')", 8000);
+    const kt = await evalJs("document.querySelector('.toast.with-action.show')?.textContent");
+    const k6 = await pieAt(5), k4 = await pieAt(3);
+    log.push(`列表：批量「加进度」→ 提示「${kt}」 ${/已给 1 个词.*1 个.*跳过/.test(kt ?? "") ? "✓" : "✗"}，第 6 行 ${k6?.includes("st-learning") ? "✓" : `✗（${k6}）`}、已掌握的第 4 行不变 ${k4?.includes("st-mastered") ? "✓" : `✗（${k4}）`}`);
+    await sleep(6500);
+    await send("Page.reload"); await sleep(3000);
+    const k6b = await pieAt(5);
+    log.push(`列表：批量「加进度」提交并刷新后第 6 行仍是学习中 ${k6b?.includes("st-learning") ? "✓" : `✗（${k6b}）`}`);
   }
 }
 // ---- 3c. 详情浮层：点词开浮层、返回不重新加载列表（需求 3.2.5）----

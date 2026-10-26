@@ -16,7 +16,7 @@ import { speakWordAndDef, voiceKeyOf, type VoiceKey } from "@/lib/client/speech"
 import { useMe } from "@/lib/client/useMe";
 import { isPopNavigation } from "@/lib/client/nav";
 import { onWordChanged } from "@/lib/client/word-events";
-import type { Bookmark, ListRow } from "@/lib/study";
+import type { BatchRateItem, Bookmark, ListRow } from "@/lib/study";
 import type { ProgressState, RateResult } from "@/lib/scheduler";
 import { deriveStatus, pieProgress } from "@/lib/status";
 import "./wordbook.css";
@@ -55,6 +55,8 @@ const OPTS: Opt[] = [
 ];
 /** 自建词库在最右边多一个「删除」：比「移出」更重的操作，放在更远的一头 */
 const CUSTOM_OPTS: Opt[] = [...OPTS, { o: "delete", label: "删除", sub: "从词库删", cls: "delete" }];
+/** 多选操作栏的一排按钮：与拖拽按钮条同一份定义（顺序、文字、颜色），只去掉「书签」——一本词库只有一个书签，没法批量设 */
+const selOpts = (opts: Opt[]) => opts.filter((o) => o.o !== "bookmark");
 /** 操作先在本地生效，UNDO_MS 内可撤销，到时才提交服务端 */
 const UNDO_MS = 5000;
 /** 向下滚过这么多像素就在右下角显示「回到顶部」：一屏的三分之一左右，不会一动就跳出来 */
@@ -93,15 +95,15 @@ const actMessage = (act: RowAct, n: number) => act === "delete" ? (n > 1 ? `已�
   : n > 1 ? `已把 ${n} 个词${act === "reset" ? "重新记" : act === "master" ? "标记为已掌握" : "移出学习"}`
   : act === "master" ? "已标记为已掌握，不再出现在学习中" : act === "remove" ? "已移出学习，状态为未加入" : "已重新记：按新词重新开始";
 /**
- * 一批待定操作：三种状态操作走 rate-batch；「删除」走词库的删词接口；「加进度」（know）一次只有一个词、走单词打分接口，
- * clientTs 与预览时用的同一个，真正提交与预览对应得上，离线补交也不会记两次
+ * 一批待定操作：状态操作与多选的「加进度」走 rate-batch；「删除」走词库的删词接口；
+ * 拖拽的「加进度」（带 clientTs，一次一个词）走单词打分接口，clientTs 与预览时用的同一个，真正提交与预览对应得上
  */
 type Pending = { ids: string[]; act: RowAct | "know"; clientTs?: string; rows: ListRow[]; data: ListResp | null; timer: ReturnType<typeof setTimeout> };
 /** 服务端 rate-batch 与删词接口单次上限都是 500，超过要切片提交（审计 F053） */
 const BATCH_MAX = 500;
 const chunk = <T,>(a: T[], n: number) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 /** 提交一批待定操作要发的请求（提交队列与离开页面的 keepalive 共用）；带上词库 id，开了独立进度的词库写自己那套（需求 3.3.6） */
-const pendingRequests = (p: Pending, bookId: string): Array<{ url: string; method: "POST" | "DELETE"; body: unknown }> => p.act === "know"
+const pendingRequests = (p: Pending, bookId: string): Array<{ url: string; method: "POST" | "DELETE"; body: unknown }> => p.act === "know" && p.clientTs
   ? [{ url: "/api/study/rate", method: "POST", body: { wordId: p.ids[0], result: "know", date: localToday(), source: "list", clientTs: p.clientTs, wordbookId: bookId } }]
   : p.act === "delete"
     ? chunk(p.ids, BATCH_MAX).map((ids) => ({ url: `/api/wordbooks/${bookId}/words`, method: "DELETE" as const, body: { wordIds: ids } }))
@@ -183,7 +185,8 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
   const commit = useCallback(async (p: Pending) => {
     try {
       for (const { url, method, body } of pendingRequests(p, id)) {
-        const r = await api<{ duplicate?: boolean; skipped?: string | null }>(url, { method, json: body });
+        // 单词打分回 duplicate / skipped（原因），批量回 skipped（没生效的词数）：哪种对不上预览都重新同步
+        const r = await api<{ duplicate?: boolean; skipped?: string | number | null }>(url, { method, json: body });
         if (p.act === "know" && (r.duplicate || r.skipped)) await refresh();
       }
       loadBook();
@@ -437,20 +440,54 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
     if (prev) { pending.current = null; enqueue(prev); }
     const snap: Pending = { ids: [row.id], act: "know", clientTs, rows: rowsRef.current, data: dataRef.current, timer: setTimeout(() => { if (pending.current === snap) { pending.current = null; enqueue(snap); } }, UNDO_MS) };
     pending.current = snap;
-    applyProgress(row.id, r.progress);
+    applyProgress(new Map([[row.id, r.progress]]));
     toast(r.skipped === "stale" ? "已记入学习历史；其它设备上有更新的记录，复习安排不变"
       : r.nextInterval > 0 ? `已记一次「认识」，${r.nextInterval} 天后再复习` : "已记一次「认识」",
     { ms: UNDO_MS, action: { label: "撤销", onClick: () => undo(snap) } });
   }
-  /** 打完分按服务端返回的进度刷新这一行：状态、饼图、下次复习时间，顺带调整各筛选的数量 */
-  function applyProgress(id: string, p: ProgressState) {
+  /**
+   * 多选「加进度」：与拖拽的一样按「认识」各记一次，规则也一样（已掌握 / 已移出 / 今天已学的跳过），
+   * 只是一批走 rate-batch：先带 preview 拿到每个词的结果本地生效，跳过的不进待定队列，5 秒内可撤销，到时真正提交
+   */
+  async function batchProgress(ids: string[]) {
+    exitSelect();
+    if (!ids.length) return;
+    await flush();
+    let items: BatchRateItem[] = [];
+    try {
+      for (const part of chunk(ids, BATCH_MAX)) {
+        const r = await api<{ items: BatchRateItem[] }>("/api/study/rate-batch", { method: "POST", json: { wordIds: part, result: "know", date: localToday(), preview: true, wordbookId: id } });
+        items = items.concat(r.items);
+      }
+    } catch (e) { toast((e as Error).message); return; }
+    const done = items.filter((i) => !i.duplicate && i.skipped !== "mastered" && i.skipped !== "removed");
+    const skip = ids.length - done.length;
+    if (!done.length) {
+      toast(items.every((i) => i.duplicate) ? "选中的词今天都学过了，进度不重复记"
+        : items.every((i) => i.skipped === "mastered" || i.skipped === "removed") ? "选中的词都已掌握或已移出，进度不变" : "选中的词都已掌握、已移出或今天学过，进度不变");
+      return;
+    }
+    const prev = pending.current;
+    if (prev) { pending.current = null; enqueue(prev); }
+    const snap: Pending = { ids: done.map((i) => i.wordId), act: "know", rows: rowsRef.current, data: dataRef.current, timer: setTimeout(() => { if (pending.current === snap) { pending.current = null; enqueue(snap); } }, UNDO_MS) };
+    pending.current = snap;
+    applyProgress(new Map(done.map((i) => [i.wordId, i.progress])));
+    const one = done.length === 1 && !skip ? done[0] : null;
+    toast(one ? (one.skipped === "stale" ? "已记入学习历史；其它设备上有更新的记录，复习安排不变"
+      : one.nextInterval > 0 ? `已记一次「认识」，${one.nextInterval} 天后再复习` : "已记一次「认识」")
+      : `已给 ${done.length} 个词各记一次「认识」${skip ? `，${skip} 个已掌握 / 已移出 / 今天学过，跳过` : ""}`,
+    { ms: UNDO_MS, action: { label: "撤销", onClick: () => undo(snap) } });
+  }
+  /** 打完分按服务端返回的进度刷新这些行：状态、饼图、下次复习时间，顺带调整各筛选的数量 */
+  function applyProgress(byId: Map<string, ProgressState>) {
     const cur = dataRef.current;
-    const st = deriveStatus({ progressStatus: p.status });
     const counts = { ...(cur?.counts ?? {}) };
     let gone = 0;
     const next: ListRow[] = [];
     for (const r of rowsRef.current) {
-      if (r.id !== id) { next.push(r); continue; }
+      const p = byId.get(r.id);
+      if (!p) { next.push(r); continue; }
+      const st = deriveStatus({ progressStatus: p.status });
       if (r.status !== st) { counts[r.status] = Math.max(0, (counts[r.status] ?? 0) - 1); counts[st] = (counts[st] ?? 0) + 1; }
       if (filter === "all" || filter === st) next.push({ ...r, status: st, pie: pieProgress(st, p.interval), due: p.dueDate }); else gone++;
     }
@@ -466,7 +503,9 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
   function enterSelect(rowId: string) { setSelectMode(true); setSelected(new Set([rowId])); }
   function exitSelect() { setSelectMode(false); setSelected(new Set()); }
   function toggle(rowId: string) { setSelected((prev) => { const n = new Set(prev); if (n.has(rowId)) n.delete(rowId); else n.add(rowId); return n; }); }
-  function batch(act: RowAct) { const ids = rows.filter((r) => selected.has(r.id)).map((r) => r.id); exitSelect(); doAct(ids, act); }
+  /** 选中的词按列表当前的顺序 */
+  const selectedIds = () => rows.filter((r) => selected.has(r.id)).map((r) => r.id);
+  function batch(act: RowAct) { const ids = selectedIds(); exitSelect(); doAct(ids, act); }
   const vk = voiceKeyOf(settings.accent, settings.voice);
   /** 自建词库才能删词：拖拽按钮条多一个「删除」，多选操作栏也多一个 */
   const custom = book?.type === "custom";
@@ -554,14 +593,15 @@ export default function WordbookClient({ initialBook, initialBookmark, initialEr
                 <button type="button" className="btn btn-ghost btn-sm" onClick={() => setSelected(new Set(rows.map((r) => r.id)))}>全选</button>
                 <span className="small faint grow">点击行勾选 · 操作后几秒内可撤销</span>
                 <button type="button" className="btn btn-soft btn-sm sel-collect" disabled={!selected.size}
-                  onClick={() => setCollectIds(rows.filter((r) => selected.has(r.id)).map((r) => r.id))}><IconBookmark />加入词库</button>
+                  onClick={() => setCollectIds(selectedIds())}><IconBookmark />加入词库</button>
               </div>
               <div className="row acts">
-                <button type="button" className="btn act-cancel" onClick={exitSelect}>取消</button>
-                <button type="button" className="btn act-reset" disabled={!selected.size} onClick={() => batch("reset")}>重新记</button>
-                <button type="button" className="btn act-master" disabled={!selected.size} onClick={() => batch("master")}>已掌握</button>
-                <button type="button" className="btn act-remove" disabled={!selected.size} onClick={() => batch("remove")}>移出</button>
-                {custom && <button type="button" className="btn act-delete" disabled={!selected.size} onClick={() => batch("delete")}>删除</button>}
+                {selOpts(custom ? CUSTOM_OPTS : OPTS).map((o) => (
+                  <button key={o.o} type="button" className={`btn act-${o.cls}`} disabled={o.o !== "cancel" && !selected.size}
+                    onClick={() => o.o === "cancel" ? exitSelect() : o.o === "know" ? batchProgress(selectedIds()) : o.o !== "bookmark" && batch(o.o)}>
+                    {o.label}{o.sub && <small>{o.sub}</small>}
+                  </button>
+                ))}
               </div>
             </div>
           </div>

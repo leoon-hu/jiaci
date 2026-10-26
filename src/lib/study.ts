@@ -241,18 +241,23 @@ export async function rateWord(userId: string, wordId: string, result: RateResul
   }
 }
 
+/** 批量打分里每个词的结果：字段与 rateWord 的返回值同义（加进度的预览靠它按词刷新各行） */
+export type BatchRateItem = { wordId: string; progress: ProgressState; nextInterval: number; duplicate: boolean; skipped: string | null };
+
 /**
- * 单词列表的批量状态操作（3.3.5）：已掌握 / 重新记 / 移出，一次最多 500 个词。
+ * 单词列表的批量操作（3.3.5）：重新记 / 加进度 / 已掌握 / 移出，一次最多 500 个词。
  * 与 rateWord 的区别只在「一次事务处理一批」（性能优化 P1-7）：
  * 原来逐词调 rateWord，每个词一个事务、一次咨询锁、五六次往返，500 个词就是三千多次往返，
  * 在单核服务器上要好几秒。这里改成一个事务：一次性把这批词的锁全拿到、一次读出已有进度、
  * 逐词用同一个 applyRating 算（调度规则仍然只有这一份实现），最后一条 createMany 写学习记录。
- * 三种结果都不经过 know / fuzzy 的那些守卫（F176 已移出/已掌握保护、NU06 当天重复、NU02 旧打分），
- * 那些判断在 rateWord 里本来就只对 know / fuzzy 生效。
+ * 加进度（know）照 rateWord 的三条守卫逐词判断：已移出 / 已掌握的不拉回（F176）、今天最后一条已是认识 / 已掌握的不重复记（NU06）、
+ * 别的设备在更晚的日期学过的只记日志不改进度（NU02）；另外三种结果不经过这些守卫，与 rateWord 一样。
+ * preview = true 只算不写（多选「加进度」先拿结果本地显示，撤销期过后再真正提交）。
+ * 不带 clientTs：真正提交时那条「今天已记过就不重复记」的守卫本身就让重复提交无害
  */
-export async function rateWordsBatch(userId: string, wordIds: string[], result: Extract<RateResult, "master" | "reset" | "remove">, today: string, scope: Scope = GLOBAL_SCOPE) {
+export async function rateWordsBatch(userId: string, wordIds: string[], result: Extract<RateResult, "know" | "master" | "reset" | "remove">, today: string, scope: Scope = GLOBAL_SCOPE, preview = false) {
   const ids = Array.from(new Set(wordIds)).sort();
-  if (!ids.length) return { done: 0 };
+  if (!ids.length) return { done: 0, items: [] as BatchRateItem[] };
   const opts = await schedulerOptions();
   const studyDate = toDate(today)!;
   try {
@@ -263,16 +268,45 @@ export async function rateWordsBatch(userId: string, wordIds: string[], result: 
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(k)) FROM unnest(${keys}::text[]) AS t(k)`;
       const existing = await tx.userWordProgress.findMany({ where: { userId, wordId: { in: ids }, scope } });
       const byId = new Map(existing.map((p) => [p.wordId, p]));
-      const logs: Prisma.StudyLogCreateManyInput[] = [];
-      for (const wordId of ids) {
-        const outcome = applyRating(toProgressState(byId.get(wordId) ?? null), result, today, opts);
-        const p = outcome.progress;
-        const fields = { interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: toDate(p.dueDate), lastReview: toDate(p.lastReview) };
-        await tx.userWordProgress.upsert({ where: { userId_wordId_scope: { userId, wordId, scope } }, create: { userId, wordId, scope, ...fields }, update: fields });
-        logs.push({ userId, wordId, result, nextInterval: outcome.nextInterval, studyDate, source: "list", scope });
+      // 加进度要看每个词今天最后一条记录（按时间正序读，后面的覆盖前面的）
+      const lastToday = new Map<string, { result: RateResult; nextInterval: number }>();
+      if (result === "know") {
+        const logs = await tx.studyLog.findMany({ where: { userId, wordId: { in: ids }, studyDate, scope }, orderBy: { studiedAt: "asc" }, select: { wordId: true, result: true, nextInterval: true } });
+        for (const l of logs) lastToday.set(l.wordId, l);
       }
-      await tx.studyLog.createMany({ data: logs });
-      return { done: ids.length };
+      const logs: Prisma.StudyLogCreateManyInput[] = [];
+      const items: BatchRateItem[] = [];
+      for (const wordId of ids) {
+        const row = byId.get(wordId) ?? null;
+        const cur = toProgressState(row);
+        if (result === "know") {
+          if (row?.status === "removed" || row?.status === "mastered") {
+            items.push({ wordId, progress: cur, nextInterval: -1, duplicate: false, skipped: row.status });
+            continue;
+          }
+          const last = lastToday.get(wordId);
+          if (last && isDone(last.result)) {
+            items.push({ wordId, progress: cur, nextInterval: last.nextInterval, duplicate: true, skipped: null });
+            continue;
+          }
+          const lastReview = fromDate(row?.lastReview ?? null);
+          if (lastReview && lastReview > today) {
+            logs.push({ userId, wordId, result, nextInterval: row?.interval ?? 0, studyDate, source: "list", scope });
+            items.push({ wordId, progress: cur, nextInterval: row?.interval ?? 0, duplicate: false, skipped: "stale" });
+            continue;
+          }
+        }
+        const outcome = applyRating(cur, result, today, opts);
+        const p = outcome.progress;
+        if (!preview) {
+          const fields = { interval: p.interval, stability: p.stability, difficulty: p.difficulty, reps: p.reps, lapses: p.lapses, status: p.status, dueDate: toDate(p.dueDate), lastReview: toDate(p.lastReview) };
+          await tx.userWordProgress.upsert({ where: { userId_wordId_scope: { userId, wordId, scope } }, create: { userId, wordId, scope, ...fields }, update: fields });
+        }
+        logs.push({ userId, wordId, result, nextInterval: outcome.nextInterval, studyDate, source: "list", scope });
+        items.push({ wordId, progress: p, nextInterval: outcome.nextInterval, duplicate: false, skipped: null });
+      }
+      if (!preview && logs.length) await tx.studyLog.createMany({ data: logs });
+      return { done: items.filter((i) => !i.duplicate && !i.skipped).length, items };
     }, { timeout: 120_000, maxWait: 10_000 });
   } catch (e) {
     // 整批是一个事务：某个词被并发删掉时整批回滚，前端会重新同步列表（审计 F014）
