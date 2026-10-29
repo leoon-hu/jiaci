@@ -593,6 +593,8 @@ textarea.input.note-input{min-height:220px;font-size:16px;line-height:1.6}
 .tab-empty{color:var(--faint);font-size:13px;padding:28px 0;text-align:center}
 /* 24 小时内看过的词条超过上限时，助记等四块所在 Tab 里的一行说明（需求 3.2.5） */
 .limit-note{margin:12px 0;padding:10px 12px;border-radius:var(--radius-sm);background:var(--bg);color:var(--muted);font-size:13px;line-height:1.5}
+/* 「生成 AI 资料」（需求 3.4 I8）：操作区按钮下面的一行说明 */
+.gen-note{margin-top:10px;font-size:12px;color:var(--faint);line-height:1.55}
 .detail-ops .btn svg{width:18px;height:18px}
 .peek-core{font-weight:700;margin-bottom:2px}
 /* 首屏折叠块：释义 / 搭配 / 短语与习语 / 句型 默认折叠，标题行可点；核心义右侧「全部展开 / 收起」 */

@@ -1,5 +1,5 @@
 /**
- * 内部清理接口（审计 F163）：给服务器上的 cron 调用，执行注销 30 天物理删除与过期会话 / 验证码清理。
+ * 内部清理接口（审计 F163）：给服务器上的 cron 调用，执行注销 30 天物理删除、过期会话 / 验证码清理，以及过期的 AI 生成记录与封禁清理。
  * 用 PURGE_TOKEN 鉴权（服务器 .env 里配），没配就一律 404，避免误开放。
  * 部署产物里没有运营脚本，所以线上只能走这个入口。
  */
@@ -23,6 +23,6 @@ export async function POST(req: Request) {
   if (!expected) return deny(404);           // 没配 token 就当这个接口不存在
   if (!tokenOk(req, expected)) return deny(401);
   const r = await purgeExpired(prisma);
-  console.log(`[purge] 注销账号 ${r.users}，过期会话 ${r.sessions}，过期验证码 ${r.otps}`);
+  console.log(`[purge] 注销账号 ${r.users}，过期会话 ${r.sessions}，过期验证码 ${r.otps}，过期的 AI 生成记录 ${r.aiRequests}，过期封禁 ${r.aiBans}`);
   return Response.json({ ok: true, ...r }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { api } from "@/lib/client/api";
+import { api, ClientApiError } from "@/lib/client/api";
+import { emitWordChanged } from "@/lib/client/word-events";
 import { speakSentence, speakWord, voiceKeyOf } from "@/lib/client/speech";
 import { STATUS_LABEL, type WordStatus } from "@/lib/status";
 import type { WordDetail as Detail } from "@/lib/study";
@@ -17,7 +18,7 @@ import { categorySummary, type WordCategory } from "@/lib/categories";
 import { lockedLabels } from "@/lib/locked";
 import Modal from "./Modal";
 import CollectModal, { type CollectTarget } from "./CollectModal";
-import { IconBookmark, IconChevron, IconEdit, IconSpeaker, IconFlag } from "./Icons";
+import { IconBookmark, IconChevron, IconEdit, IconSpeaker, IconFlag, IconSparkle } from "./Icons";
 import { useToast } from "./Toast";
 
 const RESULT: Record<RateResult, [string, string]> = { know: ["tag-result-know", "认识"], fuzzy: ["tag-review", "模糊"], master: ["tag-result-master", "已掌握"], reset: ["tag-result-reset", "重新记"], remove: ["tag-none", "移出"] };
@@ -49,8 +50,14 @@ function Fold({ title, ai = true, summary, open, onToggle, children }: { title: 
   );
 }
 
-/** 单词详情（需求 3.2.5）：学习答案页与独立详情页共用；顶部固定 + 四个 Tab */
-export default function WordDetail({ detail, settings, onNoteChange }: { detail: Detail; settings: UserSettings; onNoteChange?: (note: string | null) => void }) {
+/** 「生成 AI 资料」生成中每隔多久问一次结果 */
+const GEN_POLL_MS = 3000;
+
+/**
+ * 单词详情（需求 3.2.5）：学习答案页与独立详情页共用；顶部固定 + 四个 Tab。
+ * `onReload`：本词的资料在服务端变了（生成 AI 资料完成）时让外层重新取一次详情
+ */
+export default function WordDetail({ detail, settings, onNoteChange, onReload }: { detail: Detail; settings: UserSettings; onNoteChange?: (note: string | null) => void; onReload?: () => Promise<unknown> | void }) {
   const { toast } = useToast();
   const v = detail.view;
   const accent = settings.accent;
@@ -67,6 +74,38 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
   const [noteText, setNoteText] = useState(detail.note ?? "");
   /** 「加入我的词库」选择框正在给哪个词开：本词（操作区）或点词小框里的词；null = 关着 */
   const [collectFor, setCollectFor] = useState<CollectTarget | null>(null);
+  /** 「生成 AI 资料」（需求 3.4 I8）：进来时服务端已经有人在生成这个词就直接进轮询 */
+  const [generating, setGenerating] = useState(!!detail.aiGenerate?.running);
+  useEffect(() => { setGenerating(!!detail.aiGenerate?.running); }, [detail.id, detail.aiGenerate?.running]);
+  // 生成中每几秒问一次：好了就让外层重新取详情（按钮随之消失、资料出现），没成就提示原因、按钮恢复
+  useEffect(() => {
+    if (!generating) return;
+    let on = true;
+    const tick = async () => {
+      let r: { status: string; error: string | null };
+      try { r = await api(`/api/words/${encodeURIComponent(detail.spelling)}/generate`); } catch { return; }   // 网络抖一下，下一轮再问
+      if (!on) return;
+      if (r.status === "running") return;
+      setGenerating(false);
+      if (r.status === "done") { emitWordChanged(detail.spelling); toast("AI 资料生成好了"); await onReload?.(); }
+      else toast(r.error ? `生成没有成功：${r.error}` : "生成没有成功，可以再试一次", 5000);
+    };
+    const t = setInterval(tick, GEN_POLL_MS);
+    return () => { on = false; clearInterval(t); };
+  }, [generating, detail.spelling, onReload, toast]);
+  async function generate() {
+    if (generating) return;
+    setGenerating(true);
+    try {
+      const r = await api<{ started: boolean; remaining: number }>(`/api/words/${encodeURIComponent(detail.spelling)}/generate`, { method: "POST", json: {} });
+      toast(r.started ? `开始生成，大约要半分钟到一分钟（24 小时内还可生成 ${r.remaining} 次）` : "这个词正有人在生成，稍等一下就好", 4000);
+    } catch (e) {
+      setGenerating(false);
+      toast((e as Error).message, 4000);
+      // 别人刚生成完、这页还是旧的：重新取一次就有了
+      if (e instanceof ClientApiError && e.code === "exists") { emitWordChanged(detail.spelling); await onReload?.(); }
+    }
+  }
 
   useEffect(() => { setNoteText(detail.note ?? ""); setExpanded(false); setAllHistory(false); setPeek(null); }, [detail.spelling, detail.note]);
   useEffect(() => { setTab(0); setOpen({}); }, [detail.spelling]);
@@ -162,6 +201,7 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
                   {v.core ? <div className="core-def">{v.core}</div> : <div className="ai-pending">暂无释义</div>}</div>
               )}
               {!v.core && !foldKeys.length && <div className="entry-section"><div className="ai-pending">暂无词条资料。</div></div>}
+              {detail.aiGenerate && <div className="entry-section"><div className="ai-pending gen-hint">{generating ? "正在生成这个词的 AI 资料，好了会自动显示…" : "这个词还没有 AI 资料，可以在下面「操作」里生成。"}</div></div>}
               {v.meanings.length > 0 && (
                 <Fold open={isOpen("meanings")} onToggle={() => toggle("meanings")} title="释义" ai={v.meaningsSource === "ai"} summary={meaningsSummary(v)}>
                   {v.meanings.map((m, i) => (
@@ -232,7 +272,12 @@ export default function WordDetail({ detail, settings, onNoteChange }: { detail:
                 <button className="btn btn-secondary" onClick={() => setNoteOpen(true)}><IconEdit />{detail.note ? "修改备注" : "备注"}</button>
                 <button className="btn btn-secondary" onClick={() => setCollectFor({ spelling: detail.spelling })}><IconBookmark />加入我的词库</button>
                 <button className="btn btn-secondary" onClick={() => { setFbText(""); setFbOpen(true); }}><IconFlag />反馈</button>
-              </div></div>
+                {detail.aiGenerate && <button className="btn btn-secondary gen-btn" disabled={generating} aria-busy={generating} onClick={generate}><IconSparkle />{generating ? "正在生成…" : "生成 AI 资料"}</button>}
+              </div>
+                {detail.aiGenerate && <div className="gen-note">{generating
+                  ? "正在用 DeepSeek 生成这个词的例句、搭配、辨析、助记等，大约半分钟到一分钟，好了会自动显示；可以先去别处，稍后回来看。"
+                  : `这个词还没有 AI 资料。点「生成 AI 资料」用 DeepSeek 生成例句、搭配、辨析、助记等，生成后所有人都能看到；每人 24 小时内最多生成 ${detail.aiGenerate.limit} 次。`}</div>}
+              </div>
             </div>
             <div>
               {relatedEmpty && <div className="tab-empty">该词暂无关联词内容</div>}

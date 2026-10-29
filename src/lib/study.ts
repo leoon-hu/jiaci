@@ -2,6 +2,7 @@ import { Prisma, type StudySource } from "@prisma/client";
 import { wordFreq, type WordFreq } from "./dict";
 import { wordCore, wordView, type WordView, type DictPart } from "./word-view";
 import { AI_CARD_SELECT, AI_RUN_SELECT, aiDetailSelect, aiProvidersWithData, aiRowOf, isFullAiRow, pickAi, type AiPreference, type WordAiRelations, AI_PROVIDERS, type AiProvider } from "./ai/providers";
+import { generateAvailable, isGenerating } from "./ai/generate-state";
 import { prisma } from "./db";
 import { ApiError } from "./api";
 import { getConfig, getConfigInt } from "./config";
@@ -100,6 +101,11 @@ export type WordDetail = {
   ownProgress: boolean;
   /** 24 小时内看过的词条超过上限（需求 3.2.5）：view 里那四块已去掉，locked 是本词原来有的几块，提示里列出来 */
   limited?: { limit: number; locked: LockedBlocks };
+  /**
+   * 「生成 AI 资料」按钮（需求 3.4 I8）：没有任何厂商的资料、功能又开着（服务器有密钥、每日上限 > 0）才有；
+   * running = 已经有人在生成这个词（页面直接进轮询），limit = 每人 24 小时的上限（写进按钮下面的说明）
+   */
+  aiGenerate?: { running: boolean; limit: number };
 };
 
 /** 洗牌（Fisher-Yates）：详情页的例句每次进入都换个顺序，自动朗读读到的那一条也就跟着变 */
@@ -131,6 +137,8 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     wordCategories(word.id, settings.aiProvider),
   ]);
   const aiAvailable = ai ? aiProvidersWithData(ai) : [];
+  // 一家资料都没有的词才给「生成 AI 资料」按钮（需求 3.4 I8）；功能没开（没密钥 / 上限 0）就不给——这是少数路径，多查一次配置无妨
+  const generateLimit = aiAvailable.length ? 0 : await generateAvailable();
   // 选中哪一家：与 pickAi 一致——auto 取第一家有资料的，指定厂商没资料就退回词典
   const provider = settings.aiProvider === "auto" ? aiAvailable[0] ?? null : aiAvailable.includes(settings.aiProvider) ? settings.aiProvider : null;
   let row = provider ? aiRowOf(ai!, provider) : null;
@@ -153,6 +161,7 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     note: note?.note ?? null,
     history: logs.map((l) => ({ d: fromDate(l.studyDate)!, r: l.result, i: l.nextInterval })),
     bookId: useBookId, bookName: book?.name ?? null, bookIsCurrent: !!useBookId && useBookId === currentId, ownProgress: scope !== GLOBAL_SCOPE,
+    ...(generateLimit > 0 ? { aiGenerate: { running: isGenerating(word.spelling), limit: generateLimit } } : {}),
   };
 }
 

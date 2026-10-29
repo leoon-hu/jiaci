@@ -17,6 +17,14 @@ export const CONFIG_DEFAULTS: Record<string, string> = {
   "ai.provider": "deepseek",
   "ai.model": "deepseek-v4-flash",
   "ai.max_tokens": "6000",
+  // 用户点「生成 AI 资料」（需求 3.4 I8，只生成 DeepSeek 的）：每个账号 24 小时内最多几次（0 = 关掉这个功能）、每分钟最多几次、
+  // 每个 IP 24 小时内最多几次（多个账号合计）、服务器同时最多跑几个；24 小时内被拒几次就把账号与 IP 封几小时（ban_after 0 = 不封）
+  "ai.generate_daily_per_user": "50",
+  "ai.generate_per_minute": "5",
+  "ai.generate_daily_per_ip": "150",
+  "ai.generate_concurrency": "3",
+  "ai.generate_ban_after": "20",
+  "ai.generate_ban_hours": "24",
   "study.default_new_words": "20",
   "study.default_review_limit": "200",
   "study.extra_new_words": "10",

@@ -1,6 +1,6 @@
 # AI加词
 
-功能完整、数据完善、操作易用、免费开源、干净安全的背单词网站：内置 / 导入词库 → 每日按计划学习 → 认识 / 模糊打分 → FSRS 间隔重复安排复习；戴上耳机开跑步模式，手机熄屏放口袋也能循环听今天的词。词条的核心义、义项、例句、搭配、句型、辨析、词族、助记、词源由 AI 离线填充、全局共用，同类词（家庭成员、水果、学科……）来自手工整理的分类词表；用户可以写备注和反馈问题，不修改词条本身。仅中文界面，面向海外英语学习者；一套代码同时照顾手机与桌面，手机上可加到主屏幕当应用用。
+功能完整、数据完善、操作易用、免费开源、干净安全的背单词网站：内置 / 导入词库 → 每日按计划学习 → 认识 / 模糊打分 → FSRS 间隔重复安排复习；戴上耳机开跑步模式，手机熄屏放口袋也能循环听今天的词。词条的核心义、义项、例句、搭配、句型、辨析、词族、助记、词源由 AI 离线填充、全局共用（还没有资料的词可以当场点「生成 AI 资料」，生成后大家共用），同类词（家庭成员、水果、学科……）来自手工整理的分类词表；用户可以写备注和反馈问题，不修改词条本身。仅中文界面，面向海外英语学习者；一套代码同时照顾手机与桌面，手机上可加到主屏幕当应用用。
 
 Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同仓，应用就是仓库根目录。
 
@@ -15,7 +15,7 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
   <img src="public/shots/wordbook.png" width="24%" alt="单词列表">
 </p>
 
-> **English** · Jiaci (AI加词) is a full-featured, free and open-source vocabulary trainer for Chinese speakers learning English: pick one of 21 built-in word lists or import your own → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users; pronunciation is server-side neural TTS for words, sentences and translations. **Run mode** stitches today's words, meanings and example sentences into one looping audio track so you can keep listening with the phone locked in your pocket, with lock-screen and headset controls. No ads, no data selling, export or delete your account any time. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. **Open source under MIT — the code *and* the data model** (database schema, word-entry field contracts, word lists, offline scripts) all live in this repo. Live at [jiaci.app](https://jiaci.app).
+> **English** · Jiaci (AI加词) is a full-featured, free and open-source vocabulary trainer for Chinese speakers learning English: pick one of 21 built-in word lists or import your own → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users (a word that has no entry yet can be generated on demand with one tap, rate-limited per user); pronunciation is server-side neural TTS for words, sentences and translations. **Run mode** stitches today's words, meanings and example sentences into one looping audio track so you can keep listening with the phone locked in your pocket, with lock-screen and headset controls. No ads, no data selling, export or delete your account any time. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. **Open source under MIT — the code *and* the data model** (database schema, word-entry field contracts, word lists, offline scripts) all live in this repo. Live at [jiaci.app](https://jiaci.app).
 
 
 ## 特点
@@ -24,7 +24,7 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
 - **数据完善**：2.8 万个单词与短语，每个词有词典字段（ECDICT）与 AI 填充的十几个学习维度（核心义、义项、例句、搭配、句型、辨析、词族、助记、词源、语域、常见错误），5600 多个常用词还按语义类别互相关联（约 230 个类别的手工分类词表：mother ↔ father / brother / sister，apple ↔ banana / orange）；单词、例句、中文释义与例句译文全部有真人级发音；21 本词库按公开考试大纲与 NGSL / NAWL / AWL 整理。
 - **操作易用**：邮箱验证码登录，无需密码；每次只答「认识 / 模糊」，长按上滑 已掌握 / 重新记；列表横向拖动一行直接操作；手机与桌面一套代码，手机上加到主屏当应用用。
 - **免费开源**：MIT 许可，代码、数据库结构、词条字段契约、词表与离线脚本全部公开，谁都能查、也能自己部署；免费、无广告。
-- **干净安全**：不卖数据，没有社交与打卡，只收邮箱一项个人信息；学习记录随时导出，账号随时注销（30 天彻底删除）；应用运行时不调用任何 AI 接口。
+- **干净安全**：不卖数据，没有社交与打卡，只收邮箱一项个人信息；学习记录随时导出，账号随时注销（30 天彻底删除）；浏览、学习时不调用任何 AI 接口，只有对没有资料的词主动点「生成 AI 资料」才调一次模型，发出去的只有这个词与词典释义。
 
 ## 跑步模式
 
@@ -107,7 +107,7 @@ npm run dev                 # http://localhost:3000
 | 命令 | 说明 |
 |---|---|
 | `npm run dev` / `build` / `start` | 开发 / 构建 / 生产启动 |
-| `npm test` | 单元测试（调度算法、词典与选词规则、词条视图、AI 填充校验、发音文本、跑步模式拼接计划、导入解析、限速、日期） |
+| `npm test` | 单元测试（调度算法、词典与选词规则、词条视图、AI 填充校验、生成 AI 资料的限次与封禁规则、发音文本、跑步模式拼接计划、导入解析、限速、日期） |
 | `npm run typecheck` / `npm run lint` | 类型与代码检查 |
 | `npm run e2e` | 端到端 UI 测试（需先 `npm run dev`，使用本机 Chrome） |
 | `npm run e2e:shots [-- 1280 900]` | 全页面截图回归，默认手机视口 |
@@ -131,11 +131,11 @@ npm run categories:build -- --dry-run    # 先看每个类别的词数与找不�
 npm run categories:build
 ```
 
-词条的 AI 资料用 `npm run ai:fill` 填充（需要在 `.env` 里配模型厂商的 Key，付费），发音音频用 `npm run audio:generate` 生成（Edge-TTS，免费，也可换成自托管的 Kokoro）；没有这两样应用照常可用——详情用词典释义兜底，发音缺文件时按需合成、再不行退到浏览器语音。各脚本的参数见文件头部注释。
+词条的 AI 资料用 `npm run ai:fill` 填充（需要在 `.env` 里配模型厂商的 Key，付费；配了 `DEEPSEEK_API_KEY` 的话，用户也能在详情页对没有资料的词点「生成 AI 资料」现场生成一份，每人每天有次数上限），发音音频用 `npm run audio:generate` 生成（Edge-TTS，免费，也可换成自托管的 Kokoro）；没有这两样应用照常可用——详情用词典释义兜底，发音缺文件时按需合成、再不行退到浏览器语音。各脚本的参数见文件头部注释。
 
 ## 设计要点
 
-- **应用运行时不调用 AI**：词条的 AI 资料由离线脚本按学习维度拆成字段、经 zod 契约校验后写库，按模型厂商分表、全局共用；用户可在设置里选资料来源（自动 / DeepSeek / OpenAI），没有 AI 资料的词用词典字段兜底显示。
+- **浏览时不调用 AI**：词条的 AI 资料由离线脚本按学习维度拆成字段、经 zod 契约校验后写库，按模型厂商分表、全局共用；用户可在设置里选资料来源（自动 / DeepSeek / OpenAI），没有 AI 资料的词用词典字段兜底显示。唯一会在线上调模型的地方是详情页的「生成 AI 资料」：只对一家资料都没有的词开放，服务端后台生成（同一套提示词与校验）、页面轮询，每人 24 小时 / 每分钟与每个 IP 都有次数上限，被拒太多次自动封一段时间。
 - **发音**：单词、例句与中文释义都播放服务端 MP3（预生成，缺失时按需合成），播放失败兜底浏览器 Web Speech；口音 × 声音四种组合。跑步模式在开跑前把当天所有片段下载好、按字节拼成一整段（片段格式统一，词间间隔是拼进去的静音帧）交给一个循环播放的 `<audio>`——熄屏后浏览器只保留正在播放的媒体元素，播放中不换源、不用定时器、不碰网络；锁屏控件走 MediaSession。
 - **可运营调整的参数集中在数据库配置表**，改库即生效，无需发版；密钥只放环境变量。
 - **算法与状态是纯函数**：FSRS 调度、四色状态判定、选词规则都在 `src/lib/` 里，有单测覆盖；列表的筛选 / 搜索 / 排序 / 分页 / 计数全部下推到 SQL。

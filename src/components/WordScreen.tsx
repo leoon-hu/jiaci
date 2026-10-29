@@ -111,7 +111,7 @@ export default function WordScreen({ mode, spelling, initial, initialError = "" 
     <>
       {err && <div className="err-msg mt-12">{err}</div>}
       {!detail ? <p className="muted mt-12">加载中…</p> : (
-        <div className="mt-12"><WordDetail detail={detail} settings={settings} onNoteChange={(note) => setDetail({ ...detail, note })} /></div>
+        <div className="mt-12"><WordDetail detail={detail} settings={settings} onNoteChange={(note) => setDetail({ ...detail, note })} onReload={load} /></div>
       )}
     </>
   );

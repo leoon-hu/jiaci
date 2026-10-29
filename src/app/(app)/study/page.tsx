@@ -210,7 +210,8 @@ function Study() {
       ) : (
         <div id="answer"><main className="page narrow" style={{ paddingTop: 8 }}>
           {detailErr ? <div className="center" style={{ padding: 24 }}><p className="muted">{detailErr}</p><button className="btn btn-secondary" onClick={() => { setDetailErr(""); setScreen("front"); }}>返回卡片</button></div>
-            : !detail ? <p className="muted">加载中…</p> : <WordDetail detail={detail} settings={settings} onNoteChange={(note) => { const d = { ...detail, note }; setDetail(d); cache.current.set(d.spelling, d); }} />}
+            : !detail ? <p className="muted">加载中…</p> : <WordDetail detail={detail} settings={settings} onNoteChange={(note) => { const d = { ...detail, note }; setDetail(d); cache.current.set(d.spelling, d); }}
+                onReload={async () => { cache.current.delete(detail.spelling); const d = await fetchDetail(detail.spelling); if (alive.current && curRef.current?.spelling === d.spelling) setDetail(d); }} />}
         </main></div>
       )}
       {screen === "answer" && detail && <RateBar labels={detail.labels} mastered={detail.status === "mastered"} removed={detail.progress.status === "removed"} onRate={rate} disabled={busy} />}

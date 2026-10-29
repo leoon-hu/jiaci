@@ -60,6 +60,14 @@ enum AudioStatus {
   failed
 }
 
+/// 用户发起的 AI 资料生成（需求 3.4 I8）每条记录的状态：pending 生成中 / ok 已写入 / failed 模型或接口出错 / refused 没放行（超限、已有资料等）
+enum AiRequestStatus {
+  pending
+  ok
+  failed
+  refused
+}
+
 /// 用户档案表：一个邮箱一个账号，设置以 JSON 保存
 model User {
   /// 用户 ID（cuid）
@@ -86,6 +94,8 @@ model User {
   current      UserCurrentWordbook?
   bookmarks    WordbookBookmark[]
   bookSettings UserWordbookSetting[]
+  aiRequests   WordAiRequest[]
+  aiBans       WordAiBan[]
 
   @@map("user_profile")
 }
@@ -392,6 +402,54 @@ model WordAiDeepseek {
   @@index([core, wordId])
   @@index([core(ops: raw("gin_trgm_ops"))], type: Gin)
   @@map("word_ai_deepseek")
+}
+
+/// 用户发起的 AI 资料生成记录（需求 3.4 I8）：每次调用生成接口一行——放行的记 pending，写完改 ok、出错改 failed；没放行的记 refused。
+/// 每人每天 / 每分钟的次数、每个 IP 每天的次数与「恶意调用」的判定都按这张表数；用户注销后随账号一起删
+model WordAiRequest {
+  /// 记录 ID
+  id         String          @id @default(cuid())
+  /// 发起人
+  userId     String          @map("user_id")
+  /// 发起时的客户端 IP（反向代理传来的 X-Real-IP；本机开发是 local）
+  ip         String          @db.VarChar(64)
+  /// 要生成的词（拼写）；没放行的请求词条行可能还没建，所以记拼写、不挂外键
+  spelling   String
+  /// 状态：pending 生成中 / ok 已写入 / failed 出错 / refused 没放行
+  status     AiRequestStatus
+  /// 没放行的原因（limit_daily / limit_minute / limit_ip / busy / exists / unknown）或出错的错误摘要
+  reason     String?
+  /// 从发起到写完 / 出错用了多少毫秒（只有放行的有）
+  durationMs Int?            @map("duration_ms")
+  /// 发起时间
+  createdAt  DateTime        @default(now()) @map("created_at")
+  user       User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([ip, createdAt])
+  @@index([spelling, createdAt])
+  @@map("word_ai_request")
+}
+
+/// 生成接口的封禁（需求 3.4 I8）：24 小时内被拒太多次就把账号与 IP 各封一行，到期自动失效；运营也可以手工插一行
+model WordAiBan {
+  /// 记录 ID
+  id        String   @id @default(cuid())
+  /// 被封的账号；按 IP 封的那一行为空
+  userId    String?  @map("user_id")
+  /// 被封的 IP；按账号封的那一行为空
+  ip        String?  @db.VarChar(64)
+  /// 封到什么时候
+  until     DateTime
+  /// 原因（自动封禁写被拒的次数；手工封写明缘由）
+  reason    String
+  /// 封禁时间
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User?    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, until])
+  @@index([ip, until])
+  @@map("word_ai_ban")
 }
 
 /// 用户对词条的问题反馈：只记录，运营方用 SQL 查看处理

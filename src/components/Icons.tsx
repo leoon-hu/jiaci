@@ -15,6 +15,8 @@ export const IconBookmark = () => (<svg {...base}><path d="M19 21l-7-5-7 5V5a2 2
 /** 实心书签：词库列表顶部「跳到书签」按钮用，与上面带 + 的「加书签」区分开 */
 export const IconBookmarkSolid = () => (<svg {...base} fill="currentColor"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>);
 export const IconTrash = () => (<svg {...base}><polyline points="3 6 5 6 21 6" /><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" /><path d="M10 11v6" /><path d="M14 11v6" /><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" /></svg>);
+/** 「生成 AI 资料」：一大一小两颗四角星 */
+export const IconSparkle = () => (<svg {...base}><path d="M10 3l1.9 5.1L17 10l-5.1 1.9L10 17l-1.9-5.1L3 10l5.1-1.9z" /><path d="M18.5 14l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" /></svg>);
 export const IconFlag = () => (<svg {...base}><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" /><line x1="4" y1="22" x2="4" y2="15" /></svg>);
 export const IconCheck = () => (<svg {...base} strokeWidth={3}><polyline points="20 6 9 17 4 12" /></svg>);
 export const IconTap = () => (<svg {...base}><path d="M9 11.5V4a1.5 1.5 0 0 1 3 0v6" /><path d="M12 10.5V9a1.5 1.5 0 0 1 3 0v2" /><path d="M15 11a1.5 1.5 0 0 1 3 0v1" /><path d="M18 12a1.5 1.5 0 0 1 3 0v4a6 6 0 0 1-6 6h-2a6 6 0 0 1-5-2.7L4.6 15a1.5 1.5 0 0 1 2.3-1.9L9 15" /></svg>);

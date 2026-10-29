@@ -1,5 +1,5 @@
 /**
- * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 匿名的单词搜索 → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 番茄钟 → 登录后的单词搜索 → 列表拖拽 + 撤销 + 长按多选 → 多选加入词库 + 自建词库删词 → 我的词库本数上限 → 长按打分 → 详情页词典兜底 → 跑步模式（拼接播放、切词、小条）
+ * 端到端测试（Chrome 远程调试协议，无需 Playwright）：匿名的公开词条页与 sitemap → 匿名的单词搜索 → 登录页真实输入 → 自建测试词库（词典词 + 短语）→ 选词库 → 番茄钟 → 登录后的单词搜索 → 列表拖拽 + 撤销 + 长按多选 → 多选加入词库 + 自建词库删词 → 我的词库本数上限 → 长按打分 → 详情页词典兜底 → 生成 AI 资料按钮 → 跑步模式（拼接播放、切词、小条）
  * 不依赖任何内置词库：每次用新账号，在页面内通过接口新建「e2e 测试词库」，结束后删除。
  * 用法：npm run dev 后执行 `npm run e2e`（默认 http://localhost:3000，输出截图到 e2e/out）
  * 环境变量：BASE_URL、CHROME（Chrome 可执行文件路径）
@@ -496,6 +496,18 @@ log.push(`详情：顶部「${topBook}」居中 ${topBook?.startsWith("当前词
 const colored = await evalJs("document.querySelectorAll('.w-mastered,.w-learning,.w-new,.w-none,.legend').length");
 log.push(`详情：页面不再按状态给单词着色 ${colored === 0 ? "✓" : "✗（" + colored + "）"}`);
 await shot("e2e-word-dict");
+// ---- 5b. 生成 AI 资料（需求 3.4 I8）：有资料的词接口回 409；一家资料都没有的词详情带 aiGenerate、操作区有「生成 AI 资料」按钮与说明。
+// 不真的点——会调付费接口。kibitz 是词典里有、本机没填过 AI 资料的词；哪天本机给它生成过了，这一段换个词 ----
+{
+  const dup = await evalJs("fetch('/api/words/abandon/generate',{method:'POST',headers:{'content-type':'application/json'},body:'{}'}).then(r=>r.status)");
+  const noAi = JSON.parse(await evalJs("fetch('/api/words/kibitz').then(r=>r.json()).then(d=>JSON.stringify({gen:d.aiGenerate??null,ai:d.aiAvailable}))"));
+  await send("Page.navigate", { url: BASE + "/word/kibitz" }); await sleep(3000);
+  const btn = await evalJs("document.querySelector('.detail-ops .gen-btn')?.textContent");
+  const note = await evalJs("document.querySelector('.gen-note')?.textContent ?? ''");
+  const idle = JSON.parse(await evalJs("fetch('/api/words/kibitz/generate').then(r=>r.json()).then(d=>JSON.stringify(d))"));
+  log.push(`生成 AI 资料：有资料的 abandon → ${dup} ${dup === 409 ? "✓" : "✗"}；kibitz 详情带 aiGenerate ${noAi.gen ? "✓" : "✗ " + JSON.stringify(noAi)}，操作区按钮「${btn}」${btn === "生成 AI 资料" ? "✓" : "✗"}，说明写明每日上限 ${/每人 24 小时内最多生成 \d+ 次/.test(note) ? "✓" : "✗"}；轮询接口 ${idle.status} ${idle.status === "idle" ? "✓" : "✗"}`);
+  await shot("e2e-word-generate");
+}
 // 发音音频：单词与例句的 mp3 由 /api/audio/ 提供，例句按规范化文本的 SHA-1 寻址；未登记的哈希 404 并带 X-Audio-Fallback
 const ttsVoices = await evalJs("fetch('/api/config/public').then(r=>r.json()).then(d=>JSON.stringify(d.ttsVoices||{}))");
 const voice = JSON.parse(ttsVoices || "{}").us_female;
