@@ -161,6 +161,10 @@ npm run categories:build
 
 <img src="public/wechat-qrcode.jpg" width="200" alt="作者微信二维码">
 
+支持赞助作者，继续优化本应用体验（站内「联系站长」里是同一张赞助码）：
+
+<img src="public/wechat-pay.jpg" width="200" alt="微信支付赞助码">
+
 ## 许可
 
 代码与数据结构均以 [MIT](LICENSE) 许可开源：应用源码、`prisma/` 下的数据库表结构与迁移、`src/lib/ai/schema.ts` 的词条字段契约、`scripts/` 下的离线脚本都可以自由使用、修改与再分发。`lists/` 下词表文件与词典数据的出处及各自的许可见上一节。
