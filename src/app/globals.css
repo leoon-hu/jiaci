@@ -382,9 +382,11 @@ button.row{width:100%;border:0;border-top:1px solid var(--border);background:non
 .modal p{color:var(--muted);font-size:14px}
 .modal .actions{display:flex;gap:10px;margin-top:18px}
 .modal .actions .btn{flex:1}
-/* 「联系站长」弹窗里的微信二维码：居中一张，手机上长按识别 */
-.contact-qr{display:flex;justify-content:center;margin-top:12px}
-.contact-qr img{width:220px;height:auto;border-radius:12px;background:#fff}
+/* 「联系站长」弹窗里的两张图并排：左边站长微信二维码、右边微信支付的赞助码，图下各一行小字；手机上长按识别 */
+.contact-qr{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;margin-top:12px}
+.contact-qr figure{margin:0;text-align:center}
+.contact-qr img{display:block;width:100%;max-width:220px;height:auto;margin:0 auto;border-radius:12px;background:#fff}
+.contact-qr figcaption{margin-top:6px;font-size:13px;line-height:1.4;color:var(--muted)}
 /* 「加入我的词库」选择框（需求 3.3.4）：自建词库一本一行，右边「加入」或「✓ 已加入」；词库多了在框里滚动 */
 .collect-list{margin-top:12px;max-height:min(46vh,360px);overflow-y:auto;box-shadow:none}
 .collect-list .row{padding:10px 14px;min-height:52px}
