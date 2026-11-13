@@ -26,6 +26,9 @@
  *   - 常用短语：lists/短语-常用动词短语.txt 在前，再加牛津标记或柯林斯 ≥ 2 星的短语；其余带词典信号或场景词表里的短语进「常用词组」；
  *     专名短语（英国机构名等）不收；只出现在考试短语表里的短语不进这两本。
  *   - 生活场景：lists/场景-*.txt 按文件顺序。
+ *   - 课本系列：lists/新概念-*.txt 按课文顺序原样收录，是全库唯一的例外——不剔专名、不做变形去重、不统一英美拼写、
+ *     不剔功能词，也保留短语与短词（课本把 England、overalls、tyre、a、the、take off sth 都当条目列出来，
+ *     换成别的形式初学者对不上书）。词表文件里只去掉了 OCR 损坏、还原不了的条目与重复行。
  *   - 可重复执行：按名称找到已有内置词库后整表刷新成员与顺序；用户学习进度按词保存，不受影响。
  */
 import "dotenv/config";
@@ -53,7 +56,7 @@ type Cand = {
   id: string; spelling: string; kind: "word" | "phrase"; tags: string[]; frq: number | null; bnc: number | null; rank: number | null;
   collins: number | null; oxford: boolean; translation: string | null; display: string | null; hasSignal: boolean; base: string | null; form: string | null;
 };
-type Ctx = { all: Cand[]; bySpelling: Map<string, Cand>; list: (name: string) => Cand[] };
+type Ctx = { all: Cand[]; bySpelling: Map<string, Cand>; list: (name: string) => Cand[]; listRaw: (name: string) => Cand[] };
 type Book = { name: string; note: string; pick: (ctx: Ctx) => Cand[] };
 
 const byRank = (a: Cand, b: Cand) => (a.rank ?? 1e9) - (b.rank ?? 1e9) || a.spelling.localeCompare(b.spelling);
@@ -114,6 +117,16 @@ const ieltsCore: Book = {
 const scenario = (title: string, file: string): Book => ({ name: `海外生活 · ${title}`, note: `lists/${file} 按文件顺序`, pick: (ctx) => ctx.list(file) });
 const SCENARIOS: [string, string][] = [["租房与家居", "场景-租房与家居.txt"], ["看病与药房", "场景-看病与药房.txt"], ["银行税务办事", "场景-银行税务办事.txt"], ["职场与邮件", "场景-职场与邮件.txt"], ["孩子上学", "场景-孩子上学.txt"], ["数字生活", "场景-数字生活.txt"]];
 
+/**
+ * 课本系列：《新概念英语》四册，顺序即课文出现顺序，不重排、不按词频筛。
+ * 与其他词库不同，这里**不套**专名剔除、变形去重与英美拼写统一，也不剔功能词：课本把 England / Sweden 这类国名、
+ * overalls / newlyweds 这类只用复数的词、tyre / colour 这类英式拼写、a / the / is 这类功能词、
+ * take off sth 这类带占位的短语都当条目列出来，换成别的形式初学者反而对不上书。用 listRaw 才能取到功能词
+ * （候选池 all 按设计不含它们）。词表文件本身只去掉了 OCR 损坏、还原不了的条目与重复行。
+ */
+const textbook = (title: string, file: string): Book => ({ name: `新概念${title}`, note: `lists/${file} 按课文顺序原样收录：保留功能词、占位短语、国名地名与英式拼写`, pick: (ctx) => ctx.listRaw(file) });
+const TEXTBOOKS: [string, string][] = [["第一册", "新概念-第一册.txt"], ["第二册", "新概念-第二册.txt"], ["第三册", "新概念-第三册.txt"], ["第四册", "新概念-第四册.txt"]];
+
 /** 内置词库定义 */
 export const BOOKS: Book[] = [
   { name: "高频核心", note: "词频池前 1000", pick: (ctx) => hfPool(ctx).slice(0, 1000) },
@@ -135,6 +148,8 @@ export const BOOKS: Book[] = [
     },
   },
   ...SCENARIOS.map(([title, file]) => scenario(title, file)),
+  // 课本系列排在最后：与前面按考试 / 词频整理的词库分组不同，这四册是逐课顺序的完整课本词汇
+  ...TEXTBOOKS.map(([title, file]) => textbook(title, file)),
 ];
 
 /** 词表里还不在 word 表的词：从 dict_entry 补，其次用补充词典，都没有就报出来 */
@@ -170,12 +185,21 @@ async function ensureListWords(): Promise<string[]> {
 async function main() {
   const notFound = await ensureListWords();
   const rows = await prisma.word.findMany({ select: { id: true, spelling: true, kind: true, tags: true, frq: true, bnc: true, collins: true, oxford: true, translation: true, display: true, exchange: true } });
-  const all: Cand[] = rows
-    .map((r) => ({ id: r.id, spelling: r.spelling, kind: r.kind, tags: r.tags, frq: r.frq, bnc: r.bnc, rank: r.frq ?? r.bnc ?? null, collins: r.collins, oxford: r.oxford, translation: r.translation, display: r.display, hasSignal: r.tags.length > 0 || r.oxford || (r.collins ?? 0) > 0, base: inflectionOf({ word: r.spelling, exchange: r.exchange }), form: parseExchange(r.exchange)["1"] ?? null }))
-    .filter((c) => !isStopword(c.spelling) && !(c.spelling.length <= 3 && c.spelling.includes("'")));
+  const allRows: Cand[] = rows
+    .map((r) => ({ id: r.id, spelling: r.spelling, kind: r.kind, tags: r.tags, frq: r.frq, bnc: r.bnc, rank: r.frq ?? r.bnc ?? null, collins: r.collins, oxford: r.oxford, translation: r.translation, display: r.display, hasSignal: r.tags.length > 0 || r.oxford || (r.collins ?? 0) > 0, base: inflectionOf({ word: r.spelling, exchange: r.exchange }), form: parseExchange(r.exchange)["1"] ?? null }));
+  // 候选池：功能词与三字母以内的缩写形式不进池子——按词频 / 考试标签挑词的规则用不上它们
+  const all = allRows.filter((c) => !isStopword(c.spelling) && !(c.spelling.length <= 3 && c.spelling.includes("'")));
   const bySpelling = new Map(all.map((c) => [c.spelling, c]));
+  // 全量拼写表（含 the / me / is 这类功能词）：课本词库按课文原样收录，要能查到它们
+  const bySpellingAll = new Map(allRows.map((c) => [c.spelling, c]));
   const listCache = new Map<string, Cand[]>();
-  const ctx: Ctx = { all, bySpelling, list: (name) => { if (!listCache.has(name)) listCache.set(name, readList(name).map((w) => bySpelling.get(w)).filter((c): c is Cand => !!c && !isStopword(c.spelling))); return listCache.get(name)!; } };
+  const rawCache = new Map<string, Cand[]>();
+  const ctx: Ctx = {
+    all,
+    bySpelling,
+    list: (name) => { if (!listCache.has(name)) listCache.set(name, readList(name).map((w) => bySpelling.get(w)).filter((c): c is Cand => !!c && !isStopword(c.spelling))); return listCache.get(name)!; },
+    listRaw: (name) => { if (!rawCache.has(name)) rawCache.set(name, readList(name).map((w) => bySpellingAll.get(w)).filter((c): c is Cand => !!c)); return rawCache.get(name)!; },
+  };
   console.log(`候选词条 ${all.length}（word 表 ${rows.length}）${dry ? "，试运行不写库" : ""}`);
   const summary: string[] = [];
   // 公开词库页按名字找 slug（lib/public-books.ts），定义里有、清单里没有的词库在 /dict 上就不可见

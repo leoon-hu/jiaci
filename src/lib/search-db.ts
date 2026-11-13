@@ -61,7 +61,7 @@ async function searchEn(q: string, pref: AiPreference): Promise<SearchResult> {
   const exact = prefix.filter((r) => r.spelling === q || r.display?.toLowerCase() === q);
   const hits = mergeHits([exact.map((r) => toHit(r, pref)), lemma ? [toHit(lemma.row, pref, lemma.note)] : [], prefix.map((r) => toHit(r, pref))]);
   if (hits.length || q.replace(/[^a-z]/g, "").length < SEARCH_FUZZY_MIN_LEN) return { hits, fuzzy: false };
-  // 拼错了（recieve）：pg_trgm 的相似度取候选（2.8 万行顺序扫一遍约 20 ms，只在前缀落空时才做），
+  // 拼错了（recieve）：pg_trgm 的相似度取候选（3.2 万行顺序扫一遍约 20 ms，只在前缀落空时才做），
   // 但它对字母对调不敏感（relieve 比 receive 更「像」recieve），所以再按编辑距离与词频重排；
   // 短词的三元组太少（teh 与 the 的相似度只有 0.14），5 个字母以内另取长度差 1 以内、开头字母相同（或头两个字母对调）的词
   const short = q.length <= 5

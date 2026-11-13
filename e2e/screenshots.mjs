@@ -7,10 +7,11 @@ import { spawn } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { mkdirSync } from "node:fs";
 import { deleteTestAccounts } from "./cleanup.mjs";
+import { fileURLToPath } from "node:url";
 const CH = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const BASE = process.env.BASE_URL || "http://localhost:3000";
 const [,, width = "390", height = "844"] = process.argv;
-const outDir = new URL(`./out/shots-${width}`, import.meta.url).pathname;
+const outDir = fileURLToPath(new URL(`./out/shots-${width}`, import.meta.url));
 mkdirSync(outDir, { recursive: true });
 // 通过接口登录拿到会话 Cookie（开发模式验证码直接返回）
 const EMAIL = `shots-${Date.now()}@example.com`;

@@ -15,13 +15,13 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
   <img src="public/shots/wordbook.png" width="24%" alt="单词列表">
 </p>
 
-> **English** · Jiaci (AI加词) is a full-featured, free and open-source vocabulary trainer for Chinese speakers learning English: pick one of 21 built-in word lists or import your own → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users (a word that has no entry yet can be generated on demand with one tap, rate-limited per user); pronunciation is server-side neural TTS for words, sentences and translations. **Run mode** stitches today's words, meanings and example sentences into one looping audio track so you can keep listening with the phone locked in your pocket, with lock-screen and headset controls. No ads, no data selling, export or delete your account any time. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. **Open source under MIT — the code *and* the data model** (database schema, word-entry field contracts, word lists, offline scripts) all live in this repo. Live at [jiaci.app](https://jiaci.app).
+> **English** · Jiaci (AI加词) is a full-featured, free and open-source vocabulary trainer for Chinese speakers learning English: pick one of 25 built-in word lists or import your own → study a daily queue of cards → rate each one *know* / *fuzzy* → [FSRS](https://github.com/open-spaced-repetition/ts-fsrs) schedules the reviews. Word entries (core meaning, senses, examples, collocations, word family, mnemonics, etymology) are pre-generated offline by an LLM and shared by all users (a word that has no entry yet can be generated on demand with one tap, rate-limited per user); pronunciation is server-side neural TTS for words, sentences and translations. **Run mode** stitches today's words, meanings and example sentences into one looping audio track so you can keep listening with the phone locked in your pocket, with lock-screen and headset controls. No ads, no data selling, export or delete your account any time. Chinese UI only. Next.js 15 · TypeScript · Prisma · PostgreSQL. **Open source under MIT — the code *and* the data model** (database schema, word-entry field contracts, word lists, offline scripts) all live in this repo. Live at [jiaci.app](https://jiaci.app).
 
 
 ## 特点
 
-- **功能完整**：FSRS 间隔重复、21 本内置词库与导入 / 自建、学习卡与单词详情（释义 / 关联词 / 记忆 / 词频）、列表拖拽 / 多选 / 书签 / 两种自测、按词库独立进度、跑步模式、番茄钟、单词搜索、公开词典、装成应用、深色模式、桌面快捷键、数据导出。
-- **数据完善**：2.8 万个单词与短语，每个词有词典字段（ECDICT）与 AI 填充的十几个学习维度（核心义、义项、例句、搭配、句型、辨析、词族、助记、词源、语域、常见错误），5600 多个常用词还按语义类别互相关联（约 230 个类别的手工分类词表：mother ↔ father / brother / sister，apple ↔ banana / orange）；单词、例句、中文释义与例句译文全部有真人级发音；21 本词库按公开考试大纲与 NGSL / NAWL / AWL 整理。
+- **功能完整**：FSRS 间隔重复、25 本内置词库与导入 / 自建、学习卡与单词详情（释义 / 关联词 / 记忆 / 词频）、列表拖拽 / 多选 / 书签 / 两种自测、按词库独立进度、跑步模式、番茄钟、单词搜索、公开词典、装成应用、深色模式、桌面快捷键、数据导出。
+- **数据完善**：3.2 万个单词与短语，每个词有词典字段（ECDICT）与 AI 填充的十几个学习维度（核心义、义项、例句、搭配、句型、辨析、词族、助记、词源、语域、常见错误），5600 多个常用词还按语义类别互相关联（约 230 个类别的手工分类词表：mother ↔ father / brother / sister，apple ↔ banana / orange）；单词、例句、中文释义与例句译文全部有真人级发音；25 本词库按公开考试大纲与 NGSL / NAWL / AWL 整理，另有《新概念英语》一到四册的逐课词表。
 - **操作易用**：邮箱验证码登录，无需密码；每次只答「认识 / 模糊」，长按上滑 已掌握 / 重新记；列表横向拖动一行直接操作；手机与桌面一套代码，手机上加到主屏当应用用。
 - **免费开源**：MIT 许可，代码、数据库结构、词条字段契约、词表与离线脚本全部公开，谁都能查、也能自己部署；免费、无广告。
 - **干净安全**：不卖数据，没有社交与打卡，只收邮箱一项个人信息；学习记录随时导出，账号随时注销（30 天彻底删除）；浏览、学习时不调用任何 AI 接口，只有对没有资料的词主动点「生成 AI 资料」才调一次模型，发出去的只有这个词与词典释义。
@@ -55,7 +55,7 @@ Next.js 15（App Router）+ TypeScript + Prisma + PostgreSQL 16，前后端同�
 | 登录 | 邮箱验证码，首次登录自动注册；长期登录，活跃自动续期 |
 | 学习 | 首页显示当前词库与今日任务（待学新词 / 待复习 / 今日已完成）→ 学习卡片：正面只给拼写、音标、发音、学习记录与例句英文，点击屏幕显示答案 → 打分：认识 / 模糊，长按上滑 已掌握 / 重新记 → 今日完成、再学一组（额外新词）；桌面端有快捷键。**跑步模式**：把今天的词（待学 + 已完成，每轮 30–150 个可选）连同释义、例句（1–3 条，中英对照、本词高亮，可只读英文或英文接中文）拼成一整段音频循环播放，手机熄屏放口袋也不停，锁屏与耳机可暂停、切词；想看着屏幕时可让它保持常亮（默认开）；播放页大字，一个圆形大按钮（可放底部或顶部）点开菜单：上一个 / 暂停 / 停止 / 下一个、给当前词加进度或标已掌握（这次不再播它）、重放两遍，电脑上有快捷键；例句里的词可点，弹出点词小框、可进详情 |
 | 单词详情 | 站内点词是从右侧滑入的全屏浮层，原页面的筛选与滚动位置不丢；刷新或直接打开链接是独立整页。顶部固定单词 / 音标 / 发音，其下四个 Tab（释义 / 关联词 / 记忆 / 词频）可点击或左右滑动切换；关联词 Tab 末尾有默认折叠的「同类词」（按类别列出同类的词，每个词带释义）；正文里的英文都能点，弹出小框看发音与释义（点到变形按词典找原形，本身是别的词的变形时会注明「也是 find 的过去式」），小框里也能直接加进自己的词库；备注、反馈、加入我的词库（列出自建词库、标出已经有这个词的那几本，也能当场新建一本）、学习记录时间线、例句朗读、进入自动朗读、切换词条资料来源 |
-| 词库 | 三个 Tab（正在学习 / 我的词库 / 内置词库），内置 / 导入 / 自建三类，21 本内置词库（高频三级、八套考试、学术词汇、常用短语与词组、海外生活六本）；导入 txt（每行一词）或手动添加；自己的词库（导入 + 自建）每人最多 3 本 |
+| 词库 | 三个 Tab（正在学习 / 我的词库 / 内置词库），内置 / 导入 / 自建三类，25 本内置词库（高频三级、九本考试词汇含雅思核心、新概念四册、学术词汇、常用短语与词组、海外生活六本）；导入 txt（每行一词）或手动添加；自己的词库（导入 + 自建）每人最多 3 本 |
 | 单词列表 | 每行进度饼图 + 小喇叭 + 单词 + 主释义；按状态筛选、中英搜索、五种排序、滚到底自动加载。「隐藏释义 / 隐藏英文」两种自测模式；横向拖动一行露出「取消 / 书签 / 重新记 / 加进度 / 已掌握 / 移出」（自建词库多一个「删除」，从这本里删掉），长按进入多选，同一排操作（书签除外）对选中的词批量执行（任何词库都能把选中的词批量加进自建词库，已经在里面的自动跳过），操作可在几秒内撤销；书签记住停在哪个词和当时的筛选条件，下次一键跳回 |
 | 番茄钟 | 顶栏右侧一个按钮：选专注 25 / 45 / 60 分钟、休息 5 / 10 / 15 分钟，开始后顶栏显示倒计时（学习卡片页顶行也有），到点响一声自动转休息；可暂停、放弃；只存本设备 |
 | 单词搜索 | 顶栏一个搜索按钮，登录与未登录都能用：边输边出结果，英文按前缀（输变形先给原形：went → go，拼错了给「你要找的是不是」），中文按释义；点一条打开单词详情（未登录是公开词条页）。搜索记录只存在本设备的浏览器里，不上传 |
@@ -77,7 +77,7 @@ src/app/         api/ 为 Route Handlers，(app)/ 为登录后页面（@detail �
                  robots.ts 只禁接口与 SEO 工具的爬虫、sitemap 只列公开页，not-found.tsx 是全站 404，globals.css 是整套样式的源头
 src/components/  共用组件（单词详情、打分栏、滑动 Tab、饼图、弹层、导航壳）
 scripts/         离线脚本：词典导入、内置词库构建、同类词构建、AI 字段填充、发音音频生成、内容数据同步、定期清理
-lists/           内置词库的词表文件（考试大纲、学术与通用核心词表、场景词表、排除表、补充词典）与同类词的分类词表
+lists/           内置词库的词表文件（考试大纲、学术与通用核心词表、新概念英语逐课词表、场景词表、排除表、补充词典）与同类词的分类词表
 public/          图标与 PWA 清单、Service Worker、落地页截图（shots/）与分享卡片图（og.png）
 tests/ e2e/      单元测试、端到端与截图脚本
 ```
@@ -147,6 +147,7 @@ npm run categories:build
 - 词典数据来自 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）。
 - 通用核心词表 NGSL 与学术词表 NAWL 来自 [newgeneralservicelist.org](https://www.newgeneralservicelist.org/)（Browne / Culligan / Phillips，CC BY-SA 4.0）；学术词表 AWL 来自 Coxhead (2000)。
 - 考试词表参照公开大纲整理；各词表的出处写在 `lists/` 对应文件的头部。
+- 《新概念英语》一到四册的词表按教材的逐课词汇整理，只收单词与短语本身、按课文出现顺序排列；例句、搭配与译文由模型另行生成，不含课文原文。
 - 间隔重复算法为 [FSRS](https://github.com/open-spaced-repetition/ts-fsrs)（`ts-fsrs`，MIT）。
 
 ## 同一作者的其它学习应用
