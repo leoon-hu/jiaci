@@ -29,6 +29,10 @@ export const PUBLIC_BOOKS: PublicBook[] = [
   life("work", "职场与邮件", "职场沟通、会议、绩效与英文邮件里的常用词。"),
   life("school", "孩子上学", "报名、家长会、作业、课外活动与学校通知里的词。"),
   life("digital", "数字生活", "账号、订阅、网购、外卖、社交与设备设置里的词。"),
+  { slug: "nce1", name: "新概念第一册", blurb: "《新概念英语》第一册的课文词汇，按课文出现顺序，从 excuse me、handbag 这类入门词开始。" },
+  { slug: "nce2", name: "新概念第二册", blurb: "《新概念英语》第二册的课文词汇，按课文出现顺序；句子变长，词从日常事物转向叙事与书面表达。" },
+  { slug: "nce3", name: "新概念第三册", blurb: "《新概念英语》第三册的课文词汇，按课文出现顺序，多是报刊式的书面词与带连字符的合成词。" },
+  { slug: "nce4", name: "新概念第四册", blurb: "《新概念英语》第四册的课文词汇，按课文出现顺序，含大量科技、人文与学术领域的低频词。" },
 ];
 
 const BY_SLUG = new Map(PUBLIC_BOOKS.map((b) => [b.slug, b]));

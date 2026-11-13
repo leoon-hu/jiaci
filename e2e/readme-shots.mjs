@@ -8,6 +8,7 @@ import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { deleteTestAccounts } from "./cleanup.mjs";
 
 const CH = process.env.CHROME || "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
@@ -15,7 +16,7 @@ const BASE = process.env.BASE_URL || "http://localhost:3000";
 const BOOK = process.env.BOOK || "学术词汇";
 const ONLY = process.env.ONLY ? new Set(process.env.ONLY.split(",")) : null;
 const [W, H, SCALE] = [390, 844, 2];
-const outDir = new URL("../public/shots", import.meta.url).pathname;
+const outDir = fileURLToPath(new URL("../public/shots", import.meta.url));
 mkdirSync(outDir, { recursive: true });
 const profile = mkdtempSync(join(tmpdir(), "readme-shots-"));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
