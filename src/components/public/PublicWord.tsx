@@ -133,7 +133,7 @@ export default function PublicWord({ data }: { data: Data }) {
 
       <aside className="pub-cta card">
         <h2>把 <span lang="en">{title}</span> 加进学习计划</h2>
-        <p>AI加词按 FSRS 间隔重复安排复习，每次只需回答「认识」或「模糊」；21 本内置词库，也可以导入自己的词表。免费、开源、无需密码。</p>
+        <p>AI加词按 FSRS 间隔重复安排复习，每次只需回答「认识」或「模糊」；25 本内置词库，也可以导入自己的词表。免费、开源、无需密码。</p>
         <div className="land-cta"><Link className="btn btn-primary" href={loginNext} rel="nofollow">免费学习这个词</Link><Link className="btn btn-secondary" href="/dict">浏览全部词库</Link></div>
       </aside>
 

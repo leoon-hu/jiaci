@@ -31,10 +31,10 @@ describe("公开词条页地址", () => {
 });
 
 describe("公开词库清单", () => {
-  it("21 本，slug 与名字都唯一，slug 只含小写字母、数字与连字符", () => {
-    expect(PUBLIC_BOOKS).toHaveLength(21);
-    expect(new Set(PUBLIC_BOOKS.map((b) => b.slug)).size).toBe(21);
-    expect(new Set(PUBLIC_BOOKS.map((b) => b.name)).size).toBe(21);
+  it("25 本，slug 与名字都唯一，slug 只含小写字母、数字与连字符", () => {
+    expect(PUBLIC_BOOKS).toHaveLength(25);
+    expect(new Set(PUBLIC_BOOKS.map((b) => b.slug)).size).toBe(25);
+    expect(new Set(PUBLIC_BOOKS.map((b) => b.name)).size).toBe(25);
     for (const b of PUBLIC_BOOKS) { expect(b.slug).toMatch(/^[a-z0-9-]+$/); expect(b.blurb.length).toBeGreaterThan(10); }
   });
   it("按 slug / 名字查", () => {
