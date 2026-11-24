@@ -6,6 +6,7 @@ import { primeSettings } from "./settings";
 import { getConfig, getConfigInt } from "./config";
 import { sendOtpMail } from "./mail";
 import { allow, isOver } from "./rate-limit";
+import { isValidEmail, normalizeEmail } from "./email";
 
 /**
  * 邮箱验证码登录 + 长效会话（需求 3.1）
@@ -29,12 +30,6 @@ function hashCode(email: string, code: string) {
  * 随机值本身有 256 位熵，不需要再加盐 / 密钥，这样已有会话也能用一条 SQL 原地换成哈希（迁移 session_id_hash）
  */
 const sessionKey = (token: string) => createHash("sha256").update(token).digest("hex");
-export function normalizeEmail(e: string) {
-  return e.trim().toLowerCase();
-}
-export function isValidEmail(e: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(e);
-}
 
 export class AuthError extends Error {
   constructor(public code: string, message: string, public status = 400) {

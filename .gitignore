@@ -43,6 +43,7 @@ next-env.d.ts
 # 本地环境变量
 .env
 !.env.example
+!.env.auth-mode.example
 
 # 外部词典等本地数据（ECDICT csv，几十 MB，见 scripts/dict.ts）
 /data/
