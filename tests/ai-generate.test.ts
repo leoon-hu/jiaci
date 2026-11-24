@@ -32,6 +32,7 @@ describe("生成 AI 资料：放不放行", () => {
     expect(refusalResponse("limit_ip", L).status).toBe(429);
     expect(refusalResponse("busy", L)).toMatchObject({ status: 503, retryAfter: 30 });
     expect(refusalResponse("exists", L).status).toBe(409);
+    expect(refusalResponse("missing", L).status).toBe(409);
     expect(refusalResponse("unknown", L).status).toBe(404);
   });
 });
@@ -42,8 +43,9 @@ describe("生成 AI 资料：封禁", () => {
     expect(shouldBan(20, L)).toBe(true);
     expect(shouldBan(999, { banAfter: 0 })).toBe(false);
   });
-  it("服务器自己忙（busy）不算用户的问题，其余原因都算", () => {
+  it("服务器繁忙和请求的来源资料已移除均不计入封禁", () => {
     expect(BAN_COUNTED).not.toContain("busy");
+    expect(BAN_COUNTED).not.toContain("missing");
     for (const r of ["limit_daily", "limit_minute", "limit_ip", "exists", "unknown"] as const) expect(BAN_COUNTED).toContain(r);
   });
   it("封禁中的文案：还剩几小时，不足一小时按一小时", () => {

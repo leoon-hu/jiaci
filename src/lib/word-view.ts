@@ -25,6 +25,7 @@ export type WordView = {
   /** 数据来自哪家厂商；null = 只有词典 */
   provider: AiProvider | null;
   phonetic: { us: string; uk: string } | null;
+  phoneticFromAi: boolean;
   core: string | null;
   /** 主释义是否来自 AI（否则是词典第一条） */
   coreFromAi: boolean;
@@ -83,6 +84,7 @@ export function wordView(dict: DictPart & { spelling?: string }, ai: AiInput | n
   const view: WordView = {
     provider: null,
     phonetic,
+    phoneticFromAi: Boolean(aiUs || aiUk),
     core: text(a.core) ?? firstDef(dict.translation),
     coreFromAi: Boolean(text(a.core)),
     meanings: aiMeanings ?? dictMeanings, meaningsSource: aiMeanings ? "ai" : dictMeanings.length ? "dict" : "none",
@@ -102,7 +104,7 @@ export function wordView(dict: DictPart & { spelling?: string }, ai: AiInput | n
     inflections: inflectionsOf(dict.spelling ?? "", dict.exchange),
     hasAi: false,
   };
-  view.hasAi = Boolean(aiUs || aiUk || view.coreFromAi || aiMeanings || view.examples.length || view.collocations.length || view.phrases.length || view.patterns.length ||
+  view.hasAi = Boolean(view.phoneticFromAi || view.coreFromAi || aiMeanings || view.examples.length || view.collocations.length || view.phrases.length || view.patterns.length ||
     view.usage || view.synonyms.length || view.antonyms.length || view.confusables.length || view.mistakes.length || view.family.length || view.cognates.length || view.mnemonic || view.etymology);
   view.provider = view.hasAi ? provider : null;
   return view;

@@ -20,6 +20,7 @@ describe("词条展示视图 wordView", () => {
   it("AI 字段齐全时按契约解析", () => {
     const v = wordView(dict, abandon, "deepseek");
     expect(v.phonetic).toEqual({ us: "/əˈbændən/", uk: "/əˈbændən/" });
+    expect(v.phoneticFromAi).toBe(true);
     expect(v.core).toBe("放弃；抛弃（人、物或计划）");
     expect(v.coreFromAi).toBe(true);
     expect(v.meaningsSource).toBe("ai");
@@ -35,6 +36,7 @@ describe("词条展示视图 wordView", () => {
   it("没有 AI 字段时用词典兜底：音标、主释义、只有中文的释义块，其余为空", () => {
     const v = wordView({ phonetic: "'ketl", translation: "n. 茶壶, 罐\n[化] 釜体釜; 锅" }, null, "openai");
     expect(v.phonetic).toEqual({ us: "/'ketl/", uk: "/'ketl/" });
+    expect(v.phoneticFromAi).toBe(false);
     expect(v.core).toBe("n. 茶壶, 罐");
     expect(v.coreFromAi).toBe(false);
     expect(v.meaningsSource).toBe("dict");
@@ -42,6 +44,14 @@ describe("词条展示视图 wordView", () => {
     expect(v.examples).toEqual([]); expect(v.collocations).toEqual([]); expect(v.mnemonic).toBeNull(); expect(v.etymology).toBeNull();
     expect(v.hasAi).toBe(false); expect(v.provider).toBeNull();
     expect(wordView({ phonetic: null, translation: null }, null).meaningsSource).toBe("none");
+  });
+  it("只按实际使用的音标来源标记", () => {
+    const mixed = wordView(dict, { core: abandon.core, phoneticUs: " " }, "deepseek");
+    expect(mixed.provider).toBe("deepseek");
+    expect(mixed.phoneticFromAi).toBe(false);
+    const oneAccent = wordView(dict, { phoneticUk: abandon.phoneticUk }, "deepseek");
+    expect(oneAccent.phonetic).toEqual({ us: abandon.phoneticUk, uk: abandon.phoneticUk });
+    expect(oneAccent.phoneticFromAi).toBe(true);
   });
   it("不合规的 JSON 整块当作空，不影响其它字段", () => {
     const v = wordView(dict, { ...abandon, examples: [{ en: "", zh: "x" }], meanings: "oops" });
