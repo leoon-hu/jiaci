@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.env
+.env.*
+*.tsbuildinfo
+e2e
+tests
+data
+storage
+postgres
+audio
+*.log
