@@ -20,8 +20,10 @@ export async function wordCategories(wordId: string, pref: AiPreference = "auto"
   });
   const byCat = new Map<string, WordCategory>(mine.map((m) => [m.categoryId, { name: m.category.name, words: [] }]));
   for (const r of rows) {
-    const picked = pickAi(r.word, pref);
-    byCat.get(r.categoryId)?.words.push({ spelling: r.word.spelling, display: r.word.display, def: r.gloss ?? shortGloss(wordCore(r.word, picked?.row).def) });
+    const ai = pickAi(r.word, pref)?.row;
+    const def = r.gloss ?? shortGloss(wordCore(r.word, ai).def);
+    const defFromAi = r.gloss === null && Boolean(def && ai?.core?.trim());
+    byCat.get(r.categoryId)?.words.push({ spelling: r.word.spelling, display: r.word.display, def, defFromAi });
   }
   // 别的成员都不在 word 表里（本机没同步全）时这一类只剩本词，不显示
   return mine.map((m) => byCat.get(m.categoryId)!).filter((c) => c.words.length > 0);

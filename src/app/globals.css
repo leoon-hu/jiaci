@@ -608,6 +608,7 @@ textarea.input.note-input{min-height:220px;font-size:16px;line-height:1.6}
 .fold-all{margin-left:auto;border:0;background:transparent;color:var(--primary);font-size:12px;font-weight:600;cursor:pointer;padding:0 2px;letter-spacing:0;min-height:24px}
 .fold-all:hover{text-decoration:underline}
 .ai-source{font-size:11px;color:var(--faint);margin-top:16px}
+.ai-source-row{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
 
 /* 同类词（需求 3.4 I7）：按类别分组，一类一段；词横排自动换行，每个词后面跟一个小字主释义 */
 .cat{padding:6px 0}

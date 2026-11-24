@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Prisma, type AiRequestStatus } from "@prisma/client";
 import { prisma } from "../db";
 import { getConfig, getConfigInt } from "../config";
@@ -11,17 +12,20 @@ import {
   BAN_COUNTED, GENERATE_MINUTE_MS, GENERATE_WINDOW_MS, bannedMessage, generateEnabled, generateStatus, refusalResponse, refuseReason, remainingAfter, shouldBan,
   type GenerateLimits, type GenerateStatus, type RefuseReason,
 } from "./generate-rules";
-import { GENERATE_PROVIDER, generateJobs, hasGenerateKey } from "./generate-state";
+import { generateJobs, initialGenerateProvider, isGenerateConfigured } from "./generate-state";
+import { aiRelationOf, type AiProvider } from "./providers";
+import { getResponsesConfig, responsesJson } from "./responses";
 
 /**
- * 用户点「生成 AI 资料」（需求 3.4 I8）：对没有任何厂商资料的词，登录用户可以让服务器现场调 DeepSeek 填一次，
- * 写进 word_ai_deepseek（与运营脚本 scripts/ai-fill.ts 同一套提示词、校验与写法，全站共用），再把例句与释义登记到 audio_text 供按需合成。
+ * 登录用户可用已配置的来源首次生成 AI 资料，也可重新解析已有资料。
+ * 资料按厂商写库并全站共用，例句与释义登记到 audio_text 供按需合成。
  * 接口立刻返回、生成在本进程后台跑（一个词半分钟到一分钟，不能让请求挂着等——nginx 与 Cloudflare 都有代理超时），页面轮询 generateStatusOf。
  * 限次与封禁按 word_ai_request 表数（每人 24 小时 / 每分钟、每个 IP 24 小时；被拒太多次封账号与 IP），规则在 lib/ai/generate-rules.ts。
  */
 const ACCEPTED: AiRequestStatus[] = ["pending", "ok", "failed"];
 type Row = Omit<Prisma.WordAiDeepseekUncheckedCreateInput, "wordId">;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let admission = Promise.resolve();
 
 export async function generateLimits(): Promise<GenerateLimits> {
   const [dailyPerUser, perMinute, dailyPerIp, concurrency, banAfter, banHours] = await Promise.all([
@@ -32,39 +36,49 @@ export async function generateLimits(): Promise<GenerateLimits> {
 }
 
 export type GenerateResult =
-  | { ok: true; /** false = 别人已经在生成这个词，这次没另起任务、也不计次 */ started: boolean; remaining: number }
+  | { ok: true; /** false = 复用在跑的任务，这次不计次 */ started: boolean; remaining: number; requestId: string }
   | { ok: false; status: number; code: RefuseReason | "banned" | "unavailable"; message: string; retryAfter?: number };
 
-/** 发起生成：查封禁 → 已有资料 → 次数 → 建词条行 → 记 pending 并在后台跑 */
-export async function requestGenerate(user: { id: string }, ip: string, spelling: string): Promise<GenerateResult> {
+export async function requestGenerate(user: { id: string }, ip: string, spelling: string, regenerate?: AiProvider): Promise<GenerateResult> {
+  const provider = regenerate ?? initialGenerateProvider();
   const unavailable: GenerateResult = { ok: false, status: 503, code: "unavailable", message: "生成功能暂时没有开放" };
-  if (!hasGenerateKey()) return unavailable;
+  if (!isGenerateConfigured(provider)) return unavailable;
   const limits = await generateLimits();
   if (!generateEnabled(limits, true)) return unavailable;
-  const now = Date.now();
-  // 封禁中的请求直接拒、不记日志：封禁期内再怎么发也不再累计，到期自然恢复
-  const ban = await prisma.wordAiBan.findFirst({ where: { until: { gt: new Date(now) }, OR: [{ userId: user.id }, { ip }] }, orderBy: { until: "desc" }, select: { until: true } });
-  if (ban) return { ok: false, status: 403, code: "banned", message: bannedMessage(ban.until, now) };
-  const word = await prisma.word.findUnique({ where: { spelling }, select: { id: true, aiDeepseek: { select: { wordId: true } }, aiOpenai: { select: { wordId: true } } } });
-  // 任一厂商有资料就不生成（页面上也没有这个按钮）
-  if (word?.aiDeepseek || word?.aiOpenai) return refuse(user.id, ip, spelling, "exists", limits, now);
-  const since = (ms: number) => ({ gt: new Date(now - ms) });
-  const [userDay, userMinute, ipDay] = await Promise.all([
-    prisma.wordAiRequest.count({ where: { userId: user.id, status: { in: ACCEPTED }, createdAt: since(GENERATE_WINDOW_MS) } }),
-    prisma.wordAiRequest.count({ where: { userId: user.id, status: { in: ACCEPTED }, createdAt: since(GENERATE_MINUTE_MS) } }),
-    prisma.wordAiRequest.count({ where: { ip, status: { in: ACCEPTED }, createdAt: since(GENERATE_WINDOW_MS) } }),
-  ]);
-  // 别人刚点过、还在跑：不另起任务也不计这个人的次数，页面照样轮询等结果
-  if (generateJobs.has(spelling)) return { ok: true, started: false, remaining: Math.max(0, limits.dailyPerUser - userDay) };
-  const reason = refuseReason({ userDay, userMinute, ipDay, running: generateJobs.size }, limits);
-  if (reason) return refuse(user.id, ip, spelling, reason, limits, now);
-  // 次数都过了才建词条行（词典里有的才建，与备注 / 反馈同一条规则），免得被拒的请求也往全局词表灌行
-  const w = word ? await prisma.word.findUniqueOrThrow({ where: { id: word.id } }) : await getOrCreateKnownWord(spelling);
-  if (!w) return refuse(user.id, ip, spelling, "unknown", limits, now);
-  const req = await prisma.wordAiRequest.create({ data: { userId: user.id, ip, spelling, status: "pending" }, select: { id: true } });
-  generateJobs.set(spelling, { requestId: req.id, userId: user.id, startedAt: now });
-  void run(req.id, w);
-  return { ok: true, started: true, remaining: remainingAfter(userDay, limits) };
+  const request = admission.then(async (): Promise<GenerateResult> => {
+    const now = Date.now();
+    // 封禁中的请求直接拒、不记日志：封禁期内再怎么发也不再累计，到期自然恢复
+    const ban = await prisma.wordAiBan.findFirst({ where: { until: { gt: new Date(now) }, OR: [{ userId: user.id }, { ip }] }, orderBy: { until: "desc" }, select: { until: true } });
+    if (ban) return { ok: false, status: 403, code: "banned", message: bannedMessage(ban.until, now) };
+    const job = generateJobs.get(spelling);
+    const word = await prisma.word.findUnique({ where: { spelling }, include: { aiDeepseek: { select: { wordId: true } }, aiOpenai: { select: { wordId: true } } } });
+    if (regenerate && !word?.[aiRelationOf(regenerate)]) return refuse(user.id, ip, spelling, "missing", limits, now);
+    if (!regenerate && (word?.aiDeepseek || word?.aiOpenai)) return refuse(user.id, ip, spelling, "exists", limits, now);
+    const since = (ms: number) => ({ gt: new Date(now - ms) });
+    const [userDay, userMinute, ipDay] = await Promise.all([
+      prisma.wordAiRequest.count({ where: { userId: user.id, status: { in: ACCEPTED }, createdAt: since(GENERATE_WINDOW_MS) } }),
+      prisma.wordAiRequest.count({ where: { userId: user.id, status: { in: ACCEPTED }, createdAt: since(GENERATE_MINUTE_MS) } }),
+      prisma.wordAiRequest.count({ where: { ip, status: { in: ACCEPTED }, createdAt: since(GENERATE_WINDOW_MS) } }),
+    ]);
+    if (job?.provider === provider) return { ok: true, started: false, remaining: Math.max(0, limits.dailyPerUser - userDay), requestId: job.requestId };
+    const reason = generateJobs.has(spelling) ? "busy" : refuseReason({ userDay, userMinute, ipDay, running: generateJobs.size }, limits);
+    if (reason) return refuse(user.id, ip, spelling, reason, limits, now);
+    // 次数都过了才建词条行（词典里有的才建，与备注 / 反馈同一条规则），免得被拒的请求也往全局词表灌行
+    const target = word ?? await getOrCreateKnownWord(spelling);
+    if (!target) return refuse(user.id, ip, spelling, "unknown", limits, now);
+    const requestId = randomUUID();
+    generateJobs.set(spelling, { requestId, provider });
+    try {
+      await prisma.wordAiRequest.create({ data: { id: requestId, userId: user.id, ip, spelling, status: "pending" } });
+    } catch (error) {
+      generateJobs.delete(spelling);
+      throw error;
+    }
+    void run(requestId, target, provider);
+    return { ok: true, started: true, remaining: remainingAfter(userDay, limits), requestId };
+  });
+  admission = request.then(() => undefined, () => undefined);
+  return request;
 }
 
 /** 记一条被拒，并看要不要封：账号 24 小时内被拒够多就封账号 + 当前 IP；只是这个 IP 够多（多个账号轮着来）就只封 IP */
@@ -86,14 +100,18 @@ async function refuse(userId: string, ip: string, spelling: string, reason: Refu
 }
 
 /** 后台跑一个词：调模型 → 写表 → 登记音频文本 → 记录改 ok / failed；成功与否都从在跑清单里去掉 */
-async function run(requestId: string, w: FillWordInput & { id: string }) {
+async function run(requestId: string, w: FillWordInput & { id: string }, provider: AiProvider) {
   const t0 = Date.now();
   try {
-    const { row, warnings } = await fillWord(w);
-    await prisma.wordAiDeepseek.upsert({ where: { wordId: w.id }, create: { wordId: w.id, ...row }, update: row });
-    // 例句（含译文）与核心义登记后，详情页与跑步模式播放它们时按需合成接口才放行（防止被当免费 TTS）
-    await registerTexts(prisma, targetsOfWord(w.spelling, [{ examples: row.examples, core: row.core }]));
-    await prisma.wordAiRequest.update({ where: { id: requestId }, data: { status: "ok", durationMs: Date.now() - t0 } });
+    const { row, warnings } = await fillWord(w, provider);
+    const texts = targetsOfWord(w.spelling, [{ examples: row.examples, core: row.core }]);
+    await prisma.$transaction(async (tx) => {
+      const write = { where: { wordId: w.id }, create: { wordId: w.id, ...row }, update: row };
+      if (provider === "deepseek") await tx.wordAiDeepseek.upsert(write);
+      else await tx.wordAiOpenai.upsert(write);
+      await registerTexts(tx, texts);
+      await tx.wordAiRequest.update({ where: { id: requestId }, data: { status: "ok", durationMs: Date.now() - t0 } });
+    });
     console.log(`[ai-generate] ✓ ${w.spelling} ${((Date.now() - t0) / 1000).toFixed(1)}s${warnings.length ? "，降级：" + warnings.join("；") : ""}`);
   } catch (e) {
     const msg = (e as Error).message;
@@ -108,14 +126,19 @@ async function run(requestId: string, w: FillWordInput & { id: string }) {
  * 调模型并整理成可写表的一行——与 scripts/ai-fill.ts 的 one() 同一套步骤：
  * 输出被截断把预算提一半重来一次；JSON 坏了 / 字段不合格带着错误再要一次；接口暂时性出错（限流、超时）歇 3 秒再试一次；第二次还不行就失败
  */
-async function fillWord(w: FillWordInput): Promise<{ row: Row; warnings: string[] }> {
+async function fillWord(w: FillWordInput, provider: AiProvider): Promise<{ row: Row; warnings: string[] }> {
   const [cfgProvider, cfgModel, cfgMaxTokens] = await Promise.all([getConfig("ai.provider"), getConfig("ai.model"), getConfigInt("ai.max_tokens")]);
-  const model = cfgProvider === GENERATE_PROVIDER && cfgModel ? cfgModel : PROVIDER_API[GENERATE_PROVIDER].defaultModel;
+  const responses = getResponsesConfig(provider);
+  const model = responses?.model ?? (cfgProvider === provider && cfgModel ? cfgModel : PROVIDER_API[provider].defaultModel);
   let budget = cfgMaxTokens, feedback: string | undefined;
   for (let attempt = 1; ; attempt++) {
     let text: string;
     try {
-      text = (await chatJson(GENERATE_PROVIDER, model, SYSTEM_PROMPT, buildUserMessage(w, feedback), { maxTokens: budget })).text;
+      const userMessage = buildUserMessage(w, feedback);
+      const result = responses
+        ? await responsesJson(responses, SYSTEM_PROMPT, userMessage, budget)
+        : await chatJson(provider, model, SYSTEM_PROMPT, userMessage, { maxTokens: budget });
+      text = result.text;
     } catch (e) {
       if (attempt >= 2) throw e;
       if (e instanceof ApiCallError && e.truncated) { budget = Math.ceil(budget * 1.5); continue; }
@@ -172,16 +195,20 @@ function toRow(d: AiRowData, model: string, warnings: string[]): Row {
 }
 
 /** 轮询：这个词现在是在跑、已经有资料、刚失败，还是什么都没有 */
-export async function generateStatusOf(spelling: string): Promise<{ status: GenerateStatus; error?: string; justDone?: boolean }> {
-  const running = generateJobs.has(spelling);
+export async function generateStatusOf(spelling: string, requestId?: string): Promise<{ status: GenerateStatus; error?: string; justDone?: boolean }> {
+  const job = generateJobs.get(spelling);
+  if (job && (!requestId || job.requestId === requestId)) return { status: "running" };
   const [word, latest] = await Promise.all([
-    prisma.word.findUnique({ where: { spelling }, select: { aiDeepseek: { select: { wordId: true } }, aiOpenai: { select: { wordId: true } } } }),
-    prisma.wordAiRequest.findFirst({ where: { spelling, status: { in: ACCEPTED } }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, createdAt: true } }),
+    requestId ? null : prisma.word.findUnique({ where: { spelling }, select: { aiDeepseek: { select: { wordId: true } }, aiOpenai: { select: { wordId: true } } } }),
+    prisma.wordAiRequest.findFirst({ where: { spelling, id: requestId, status: { in: ACCEPTED } }, orderBy: { createdAt: "desc" }, select: { id: true, status: true, reason: true, createdAt: true } }),
   ]);
-  const r = generateStatus(running, !!(word?.aiDeepseek || word?.aiOpenai), latest);
+  const active = generateJobs.get(spelling);
+  const running = !!active && (!requestId || active.requestId === requestId);
+  const done = requestId ? latest?.status === "ok" : !!(word?.aiDeepseek || word?.aiOpenai);
+  const r = generateStatus(running, done, latest);
   // 服务重启把在跑的任务丢了：记录还是 pending、内存里却没有——补记成失败，免得这个词永远「生成中」
   if (r.status === "failed" && latest?.status === "pending") {
-    await prisma.wordAiRequest.update({ where: { id: latest.id }, data: { status: "failed", reason: "服务重启，生成被打断" } }).catch(() => { /* 忽略 */ });
+    await prisma.wordAiRequest.updateMany({ where: { id: latest.id, status: "pending" }, data: { status: "failed", reason: "服务重启，生成被打断" } }).catch(() => { /* 忽略 */ });
   }
   return r;
 }

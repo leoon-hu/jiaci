@@ -1,6 +1,6 @@
 /**
  * 运营脚本：用模型填充词条 AI 字段，写入对应厂商的 word_ai_* 表。
- * 应用运行时不调用这里；密钥只从环境变量读（DEEPSEEK_API_KEY / OPENROUTER_API_KEY——OpenAI 的模型经 openrouter.ai 调用，模型名带 openai/ 前缀）。
+ * 应用运行时不调用这里；从 .env 读取 DeepSeek、OpenRouter 或 OpenAI Responses 的连接配置。
  *
  * 用法（项目根目录）：
  *   npm run ai:fill -- --provider deepseek --words abandon,reluctant,"give up"   # 指定词
@@ -9,7 +9,7 @@
  *   npm run ai:fill -- --provider deepseek --missing --stale deepseek-chat@1 --regenerate --limit 50  # 只重生成 source 不是该前缀的旧行
  *   npm run ai:fill -- --provider deepseek --missing --warned --regenerate --limit 20   # 复查写入时有降级（source 带 +warn）的行
  *   选项：--model 模型名（默认按厂商）  --regenerate 已有行也重写  --stale <source 前缀> 只挑旧版本的行  --warned 只挑有降级的行  --concurrency 2  --dry-run 只打印提示词不调接口  --print 打印返回的 JSON
- *   长跑护栏：--max-cost 12（累计估算费用达到这个美元数就停）  --max-fail-rate 0.2（失败率上限，默认 0.2，满 50 词后才判）
+ *   长跑护栏：--max-cost 12（累计费用达到该美元数就停；Responses 依据上游返回的费用）  --max-fail-rate 0.2（失败率上限，默认 0.2，满 50 词后才判）
  *   --missing 默认只挑内置词库里的词；加 --all 则不限词库，把 word 表里所有还没填的词都算上
  *   写完一词的 AI 行后会登记例句并用 Edge-TTS（免费）顺带合成单词四种声音与例句默认声音的音频；--no-audio 关闭
  */
@@ -18,6 +18,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { Prisma, PrismaClient } from "@prisma/client";
 import { AI_PROVIDERS, type AiProvider } from "../src/lib/ai/providers";
 import { ApiCallError, PROMPT_VERSION, PROVIDER_API, SYSTEM_PROMPT, buildUserMessage, chatJson, deepseekPeak, estimateCost, extractJson, isDbError, isFatalApiError, isTransientApiError, validateFill, type AiRowData, type FillWordInput, type Usage } from "../src/lib/ai/fill";
+import { getResponsesConfig, responsesJson } from "../src/lib/ai/responses";
 import { normalizeWord } from "../src/lib/words";
 import { getConfig, getConfigInt } from "../src/lib/config";
 import { ttsConfig, type TtsConfig } from "../src/lib/tts";
@@ -29,6 +30,7 @@ const argv = process.argv.slice(2);
 const has = (f: string) => argv.includes(`--${f}`);
 const arg = (n: string, d = "") => { const i = argv.indexOf(`--${n}`); return i > -1 && argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : d; };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const reasoningUsage = (usage: Usage) => usage.reasoning === undefined ? "" : `（其中推理 ${usage.reasoning}）`;
 /** 模型输出本身的问题（JSON 坏了、字段不合格）：只算这个词失败，不计入「连续失败」熔断 */
 class ContentError extends Error {}
 /** 失败的原始输出存到 storage/ai-fail/ 便于排查（目录已 gitignore） */
@@ -71,15 +73,19 @@ async function main() {
   const [cfgProvider, cfgModel, cfgMaxTokens] = await Promise.all([getConfig("ai.provider"), getConfig("ai.model"), getConfigInt("ai.max_tokens")]);
   const provider = arg("provider", process.env.AI_FILL_PROVIDER ?? cfgProvider) as AiProvider;
   if (!AI_PROVIDERS.includes(provider)) throw new Error(`--provider 只能是 ${AI_PROVIDERS.join(" / ")}（当前默认来自 system_config 的 ai.provider = ${cfgProvider}）`);
+  const responses = getResponsesConfig(provider);
   // 配置里的模型名只在厂商也用配置默认值时生效，否则用该厂商自己的默认模型
-  const model = arg("model", provider === cfgProvider && cfgModel ? cfgModel : PROVIDER_API[provider].defaultModel);
+  const model = arg("model", responses?.model ?? (provider === cfgProvider && cfgModel ? cfgModel : PROVIDER_API[provider].defaultModel));
   const limit = Number(arg("limit", "5")) || 5;
   const concurrency = Math.max(1, Number(arg("concurrency", "2")) || 2);
   const maxTokens = Number(arg("max-tokens", String(cfgMaxTokens))) || cfgMaxTokens;
   const dry = has("dry-run"), print = has("print"), regenerate = has("regenerate"), audio = !has("no-audio");
+  if (responses && !dry && (!responses.apiKey || !model)) {
+    throw new Error("Responses 接口需要配置 OPENAI_API_KEY 和 OPENAI_RESPONSES_MODEL（或用 --model 指定模型）");
+  }
   /**
    * 长跑（几千词一批）用的两道闸，防止「一直失败还一直付费」：
-   * --max-cost 累计估算费用（美元）超过就停；--max-fail-rate 失败率超过就停（默认 20%，至少处理 50 词后才判，避免开头抖动误停）。
+   * --max-cost 累计费用（美元）达到上限就停；--max-fail-rate 失败率超过就停（默认 20%，至少处理 50 词后才判，避免开头抖动误停）。
    * 连续失败 / 连续输出不合格已有 8 次熔断，这两道管的是「失败与成功交错、连续计数永远到不了 8」的情况。
    */
   const maxCost = Number(arg("max-cost", "0")) || 0;
@@ -150,7 +156,7 @@ async function main() {
     if (skip.length) console.log(`已有 ${provider} 数据，跳过（加 --regenerate 重写）：${skip.map((w) => w.spelling).join(", ")}`);
     words = words.filter((w) => !done.has(w.id));
   }
-  console.log(`厂商 ${provider}，模型 ${model}，来源标记 ${source}，待处理 ${words.length} 词${dry ? "（试运行，不调接口）" : ""}`);
+  console.log(`厂商 ${provider}${responses ? "（Responses）" : ""}，模型 ${model}，来源标记 ${source}，待处理 ${words.length} 词${dry ? "（试运行，不调接口）" : ""}`);
   if (!words.length) return;
   if (dry) {
     console.log("\n===== 系统提示词 =====\n" + SYSTEM_PROMPT + "\n\n===== 用户消息（第一个词） =====\n" + buildUserMessage(words[0]));
@@ -160,15 +166,21 @@ async function main() {
   const tts: TtsConfig | null = audio ? await ttsConfig() : null;
   const total: Usage = { input: 0, cachedInput: 0, output: 0 };
   const clips = { created: 0, skipped: 0, failed: 0 };
+  let missingResponsesCost = false;
   let ok = 0, failed = 0, i = 0, consecutiveFail = 0, consecutiveBad = 0;
   /** 用量累加：成功与失败（截断 / 空返回）都要算，那些调用同样计费（审计 F097） */
   const countUsage = (u: Usage) => {
     total.input += u.input; total.cachedInput += u.cachedInput; total.output += u.output;
+    if (u.reasoning !== undefined) total.reasoning = (total.reasoning ?? 0) + u.reasoning;
     if (u.cost !== undefined) total.cost = (total.cost ?? 0) + u.cost;
-    if (maxCost && !aborted && estimateCost(provider, total) >= maxCost) {
+    else if (responses) missingResponsesCost = true;
+    if (!maxCost || aborted) return;
+    if (missingResponsesCost) {
+      aborted = "Responses 上游未返回计费金额，无法核算 --max-cost";
+    } else if (estimateCost(provider, total) >= maxCost) {
       aborted = `累计费用已达上限 $${maxCost}（--max-cost）`;
-      console.log(`\n⛔ ${aborted}，停止本次运行`);
     }
+    if (aborted) console.log(`\n⛔ ${aborted}，停止本次运行`);
   };
   const one = async (w: FillWordInput & { id: string }) => {
     const t0 = Date.now();
@@ -178,7 +190,10 @@ async function main() {
       try {
         if (dbDown) await dbDown;   // 数据库没恢复前不花钱
         if (aborted) return;
-        const r = await chatJson(provider, model, SYSTEM_PROMPT, buildUserMessage(w, feedback), { maxTokens: budget });
+        const userMessage = buildUserMessage(w, feedback);
+        const r = responses
+          ? await responsesJson({ ...responses, model }, SYSTEM_PROMPT, userMessage, budget)
+          : await chatJson(provider, model, SYSTEM_PROMPT, userMessage, { maxTokens: budget });
         countUsage(r.usage);
         let raw: unknown;
         try { raw = extractJson(r.text); } catch (e) { feedback = `JSON 解析失败：${(e as Error).message}`; dumpFailure(provider, w.spelling, attempt, feedback, r.text); if (attempt === 2) throw new ContentError(feedback); continue; }
@@ -220,7 +235,7 @@ async function main() {
           clips.created += st.created; clips.skipped += st.skipped; clips.failed += st.failed;
           audioNote = `，音频 +${st.created}${st.failed ? `（失败 ${st.failed}）` : ""}`;
         }
-        console.log(`✓ ${w.spelling.padEnd(16)} ${((Date.now() - t0) / 1000).toFixed(1)}s  输入 ${r.usage.input + r.usage.cachedInput}（缓存 ${r.usage.cachedInput}）/ 输出 ${r.usage.output} token${r.usage.cost !== undefined ? `，计费 $${r.usage.cost.toFixed(4)}` : ""}${audioNote}${attempt === 2 ? "（重试后通过）" : ""}${warnings.length ? "\n    ⚠ " + warnings.join("\n    ⚠ ") : ""}`);
+        console.log(`✓ ${w.spelling.padEnd(16)} ${((Date.now() - t0) / 1000).toFixed(1)}s  输入 ${r.usage.input + r.usage.cachedInput}（缓存 ${r.usage.cachedInput}）/ 输出 ${r.usage.output}${reasoningUsage(r.usage)} token${r.usage.cost !== undefined ? `，计费 $${r.usage.cost.toFixed(4)}` : ""}${audioNote}${attempt === 2 ? "（重试后通过）" : ""}${warnings.length ? "\n    ⚠ " + warnings.join("\n    ⚠ ") : ""}`);
         if (print) console.log(JSON.stringify(raw, null, 1));
         return;
       } catch (e) {
@@ -228,12 +243,12 @@ async function main() {
         if (e instanceof ApiCallError) {
           countUsage(e.usage);
           // 原样重发几乎必然再被截断，重试时把预算提一半（审计 F098）
-          if (e.truncated && attempt === 1) { budget = Math.ceil(budget * 1.5); console.log(`  ${w.spelling}: ${msg}，把 max_tokens 提到 ${budget} 重试`); continue; }
+          if (e.truncated && attempt === 1 && !aborted) { budget = Math.ceil(budget * 1.5); console.log(`  ${w.spelling}: ${msg}，把 ${responses ? "max_output_tokens" : "max_tokens"} 提到 ${budget} 重试`); continue; }
         }
         // 致命：密钥 / 余额 / 数据库长时间不恢复——停止整个运行，已入库的不受影响，重跑 --missing 从缺的词继续
         if (isFatalApiError(e) || /没有恢复/.test(msg) || isDbError(e)) { aborted = msg; console.log(`\n⛔ ${msg}\n停止本次运行；已处理的词已入库，重跑 --missing 会从缺的词继续`); return; }
-        // 接口错误（超时、限流、模型输出不合格等）：第一次再试一次，第二次记失败
-        if (attempt === 2) {
+        // Responses 的拒答和过滤直接记失败，其余可重试的错误最多试两次
+        if (attempt === 2 || (responses && e instanceof ApiCallError && !isTransientApiError(e))) {
           failed++;
           if (e instanceof ContentError) consecutiveBad++; else { consecutiveFail++; consecutiveBad = 0; }
           console.log(`✗ ${w.spelling}: ${msg}`);
@@ -254,9 +269,11 @@ async function main() {
   };
   await Promise.all(Array.from({ length: Math.min(concurrency, words.length) }, async () => { while (i < words.length && !aborted) await one(words[i++]); }));
   if (aborted) { console.log(`\n本次因「${aborted}」提前停止：完成 ${ok}，失败 ${failed}，未处理 ${words.length - ok - failed}`); process.exitCode = 1; }
-  const cost = estimateCost(provider, total);
+  const cost = responses && (missingResponsesCost || total.cost === undefined) ? undefined : estimateCost(provider, total);
   const tariff = provider === "deepseek" ? (deepseekPeak() ? "，按高峰时段价；北京时间 12–14 点、18 点到次日 9 点及周末为离峰半价" : "，按离峰半价") : "";
-  console.log(`\n完成：成功 ${ok}，失败 ${failed}；token 输入 ${total.input + total.cachedInput}（缓存命中 ${total.cachedInput}）/ 输出 ${total.output}，${total.cost !== undefined ? "实际计费" : "估算费用约"} $${cost.toFixed(4)} ≈ ¥${(cost * 7.2).toFixed(2)}（每词约 $${(cost / Math.max(1, ok + failed)).toFixed(4)}${tariff}；以账单为准）`);
+  const costNote = cost === undefined ? "，上游未提供完整计费金额"
+    : `，${total.cost !== undefined ? "实际计费" : "估算费用约"} $${cost.toFixed(4)} ≈ ¥${(cost * 7.2).toFixed(2)}（每词约 $${(cost / Math.max(1, ok + failed)).toFixed(4)}${tariff}；以账单为准）`;
+  console.log(`\n完成：成功 ${ok}，失败 ${failed}；token 输入 ${total.input + total.cachedInput}（缓存命中 ${total.cachedInput}）/ 输出 ${total.output}${reasoningUsage(total)}${costNote}`);
   if (tts) console.log(`音频：新生成 ${clips.created} 段，已有 ${clips.skipped} 段，失败 ${clips.failed} 段（引擎 ${tts.provider}，目录 storage/audio 或 AUDIO_DIR）`);
   console.log(`查看效果：设置里「词条资料来源」选「自动」或「${provider}」，打开 http://localhost:3000/word/<单词>`);
 }

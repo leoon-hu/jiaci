@@ -1,5 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { categorySummary, parseCategoryList, shortGloss } from "../src/lib/categories";
+import { wordCategories } from "../src/lib/categories-db";
+
+const { findMany } = vi.hoisted(() => ({ findMany: vi.fn() }));
+vi.mock("../src/lib/db", () => ({ prisma: { wordCategoryMember: { findMany } } }));
 
 const e = (w: string, gloss: string | null = null) => ({ w, gloss });
 
@@ -54,6 +58,24 @@ describe("同类词词表解析", () => {
 });
 
 describe("同类词展示", () => {
+  it("标记源自 AI 核心义的同类词释义", async () => {
+    const categoryId = "legal";
+    const aiOpenai = { core: "法官；裁判", corePos: "n." };
+    findMany
+      .mockResolvedValueOnce([{ categoryId, category: { name: "法律职业", sortOrder: 0 } }])
+      .mockResolvedValueOnce([
+        { categoryId, gloss: "审判员", word: { spelling: "judge", display: null, translation: "n. 审判员", aiOpenai } },
+        { categoryId, gloss: null, word: { spelling: "justice", display: null, translation: "n. 正义", aiOpenai } },
+        { categoryId, gloss: null, word: { spelling: "lawyer", display: null, translation: "n. 律师", aiOpenai: { core: " ", corePos: null } } },
+      ]);
+    const [category] = await wordCategories("target", "openai");
+    expect(category.words).toEqual([
+      { spelling: "judge", display: null, def: "审判员", defFromAi: false },
+      { spelling: "justice", display: null, def: "法官", defFromAi: true },
+      { spelling: "lawyer", display: null, def: "律师", defFromAi: false },
+    ]);
+  });
+
   it("主释义只取第一个分句", () => {
     expect(shortGloss("放弃；抛弃（人、物或计划）")).toBe("放弃");
     expect(shortGloss("n. 母亲, 妈妈")).toBe("n. 母亲");

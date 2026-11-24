@@ -45,7 +45,7 @@ export function targetsOfWord(
 }
 
 /** 登记到 audio_text（已有的跳过）：只有登记过的例句才允许按需合成 */
-export async function registerTexts(db: PrismaClient, targets: AudioTarget[]) {
+export async function registerTexts(db: Pick<PrismaClient, "audioText">, targets: AudioTarget[]) {
   if (!targets.length) return;
   await db.audioText.createMany({ data: targets.map((t) => ({ textHash: textHash(t.text), kind: t.kind, text: t.text })), skipDuplicates: true });
 }

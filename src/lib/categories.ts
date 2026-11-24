@@ -12,7 +12,7 @@ export type CategoryEntry = { w: string; gloss: string | null };
 /** 词表里的一个类别 */
 export type CategoryDef = { name: string; entries: CategoryEntry[] };
 /** 类别里的一个成员（详情页 / 公开页用）：拼写、显示用词头、一句主释义 */
-export type CategoryWord = { spelling: string; display: string | null; def: string | null };
+export type CategoryWord = { spelling: string; display: string | null; def: string | null; defFromAi?: boolean };
 /** 某个词所属的一个类别：words 是这一类里本词之外的其它成员，按词表顺序 */
 export type WordCategory = { name: string; words: CategoryWord[] };
 

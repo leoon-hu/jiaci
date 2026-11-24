@@ -9,9 +9,8 @@ import {
 } from "./schema";
 
 /**
- * 词条 AI 字段填充（运营脚本 scripts/ai-fill.ts 用，应用运行时不调用）：
+ * 批量填充和详情页生成共用的提示词、输出校验和 Chat Completions 客户端：
  * 一次调用一个词，模型输出一个 JSON，按 lib/ai/schema.ts 契约校验后写入对应厂商的 word_ai_* 表。
- * 各厂商都走 OpenAI 兼容的 chat/completions 接口，密钥只从环境变量读。
  */
 export const PROMPT_VERSION = 5;
 
@@ -44,7 +43,11 @@ export const PROVIDER_API: Record<AiProvider, ProviderApi> = {
 };
 
 export type FillWordInput = { spelling: string; display?: string | null; kind: "word" | "phrase"; translation?: string | null; definition?: string | null; exchange?: string | null };
-export type Usage = { input: number; cachedInput: number; output: number; /** 接口返回的实际计费（美元；OpenRouter 有，其它厂商没有） */ cost?: number };
+export type Usage = {
+  input: number; cachedInput: number; output: number;
+  /** 推理 Token 已计入 output */ reasoning?: number;
+  /** 接口返回的实际计费（美元） */ cost?: number;
+};
 /** 写入厂商表的一行（Prisma 字段名） */
 export type AiRowData = {
   phoneticUs: string | null; phoneticUk: string | null; core: string;
@@ -135,9 +138,9 @@ export function buildUserMessage(w: FillWordInput, feedback?: string): string {
   return lines.join("\n");
 }
 
-/** 接口调用出错但已经产生用量（截断 / 空内容）：把用量带出来，truncated 供调用方决定要不要加大 max_tokens 重试 */
+/** 接口响应出错时保留用量。截断由调用方增加输出预算后重试 */
 export class ApiCallError extends Error {
-  constructor(message: string, public usage: Usage, public truncated = false) { super(message); }
+  constructor(message: string, public usage: Usage, public truncated = false, public retryable = false) { super(message); }
 }
 
 /** 调 OpenAI 兼容接口，返回文本与用量 */
@@ -396,6 +399,7 @@ export function isFatalApiError(e: unknown): boolean {
 }
 /** 限流或服务端错误：等一会再试 */
 export function isTransientApiError(e: unknown): boolean {
+  if (e instanceof ApiCallError) return e.retryable;
   const msg = e instanceof Error ? e.message : String(e);
   return /接口 (429|5\d\d)\b|超时|timeout|fetch failed|ECONNRESET|ETIMEDOUT/i.test(msg);
 }

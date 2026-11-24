@@ -9,10 +9,9 @@ export const GENERATE_MINUTE_MS = 60_000;
 export const GENERATE_RECENT_MS = 600_000;
 
 /** 没放行的原因（写进 word_ai_request.reason） */
-export type RefuseReason = "limit_daily" | "limit_minute" | "limit_ip" | "busy" | "exists" | "unknown";
+export type RefuseReason = "limit_daily" | "limit_minute" | "limit_ip" | "busy" | "exists" | "missing" | "unknown";
 /**
- * 这些原因算「用户的问题」（超限还在发、对已有资料 / 查无此词的拼写还在发——页面上根本没有这样的按钮，多半是脚本），
- * 24 小时内累计到 banAfter 次就封账号与 IP；busy 是服务器自己在忙，不算
+ * 超限、重复发起首次生成和查无此词计入封禁。服务器繁忙或来源资料已移除时不计入。
  */
 export const BAN_COUNTED: readonly RefuseReason[] = ["limit_daily", "limit_minute", "limit_ip", "exists", "unknown"];
 
@@ -59,6 +58,7 @@ export function refusalResponse(reason: RefuseReason, l: GenerateLimits): { stat
     case "limit_ip": return { status: 429, message: "这个网络 24 小时内生成的次数太多，过一天再来" };
     case "busy": return { status: 503, message: "正在生成的词太多，稍等一会儿再试", retryAfter: 30 };
     case "exists": return { status: 409, message: "这个词已经有 AI 资料了" };
+    case "missing": return { status: 409, message: "这个来源暂无可重新解析的 AI 资料" };
     case "unknown": return { status: 404, message: "词典里没有收录这个词" };
   }
 }

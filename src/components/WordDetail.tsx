@@ -74,38 +74,54 @@ export default function WordDetail({ detail, settings, onNoteChange, onReload }:
   const [noteText, setNoteText] = useState(detail.note ?? "");
   /** 「加入我的词库」选择框正在给哪个词开：本词（操作区）或点词小框里的词；null = 关着 */
   const [collectFor, setCollectFor] = useState<CollectTarget | null>(null);
-  /** 「生成 AI 资料」（需求 3.4 I8）：进来时服务端已经有人在生成这个词就直接进轮询 */
-  const [generating, setGenerating] = useState(!!detail.aiGenerate?.running);
-  useEffect(() => { setGenerating(!!detail.aiGenerate?.running); }, [detail.id, detail.aiGenerate?.running]);
-  // 生成中每几秒问一次：好了就让外层重新取详情（按钮随之消失、资料出现），没成就提示原因、按钮恢复
+  const aiGenerate = detail.aiGenerate;
+  const regenerate = !!v.provider;
+  const serverRequestId = aiGenerate?.requestId ?? null;
+  const [requestId, setRequestId] = useState(serverRequestId);
+  const [submitting, setSubmitting] = useState(false);
+  const generating = submitting || !!requestId;
+  useEffect(() => { setRequestId(serverRequestId); }, [detail.spelling, serverRequestId]);
   useEffect(() => {
-    if (!generating) return;
+    if (!requestId) return;
     let on = true;
     const tick = async () => {
       let r: { status: string; error: string | null };
-      try { r = await api(`/api/words/${encodeURIComponent(detail.spelling)}/generate`); } catch { return; }   // 网络抖一下，下一轮再问
-      if (!on) return;
-      if (r.status === "running") return;
-      setGenerating(false);
-      if (r.status === "done") { emitWordChanged(detail.spelling); toast("AI 资料生成好了"); await onReload?.(); }
-      else toast(r.error ? `生成没有成功：${r.error}` : "生成没有成功，可以再试一次", 5000);
+      try { r = await api(`/api/words/${encodeURIComponent(detail.spelling)}/generate?requestId=${encodeURIComponent(requestId)}`); } catch { return; }
+      if (!on || r.status === "running") return;
+      on = false;
+      clearInterval(timer);
+      if (r.status === "done") {
+        emitWordChanged(detail.spelling);
+        try { await onReload?.(); toast("AI 资料已更新"); }
+        catch { toast("AI 资料已更新，请刷新查看"); }
+      } else {
+        toast(r.error ? `AI 资料更新失败：${r.error}` : "AI 资料更新失败，可以再试一次", 5000);
+      }
+      setRequestId((current) => current === requestId ? null : current);
     };
-    const t = setInterval(tick, GEN_POLL_MS);
-    return () => { on = false; clearInterval(t); };
-  }, [generating, detail.spelling, onReload, toast]);
+    const timer = setInterval(tick, GEN_POLL_MS);
+    return () => { on = false; clearInterval(timer); };
+  }, [requestId, detail.spelling, onReload, toast]);
   async function generate() {
-    if (generating) return;
-    setGenerating(true);
+    if (!aiGenerate || generating) return;
+    setSubmitting(true);
     try {
-      const r = await api<{ started: boolean; remaining: number }>(`/api/words/${encodeURIComponent(detail.spelling)}/generate`, { method: "POST", json: {} });
-      toast(r.started ? `开始生成，大约要半分钟到一分钟（24 小时内还可生成 ${r.remaining} 次）` : "这个词正有人在生成，稍等一下就好", 4000);
+      const r = await api<{ started: boolean; remaining: number; requestId: string }>(`/api/words/${encodeURIComponent(detail.spelling)}/generate`, {
+        method: "POST", json: regenerate ? { regenerate: aiGenerate.provider } : {},
+      });
+      setRequestId(r.requestId);
+      emitWordChanged(detail.spelling);
+      toast(r.started ? `开始${regenerate ? "重新解析" : "生成"}，完成后会自动更新（24 小时内还可生成 ${r.remaining} 次）` : "这个词正有人在生成，稍等一下就好", 4000);
     } catch (e) {
-      setGenerating(false);
       toast((e as Error).message, 4000);
-      // 别人刚生成完、这页还是旧的：重新取一次就有了
-      if (e instanceof ClientApiError && e.code === "exists") { emitWordChanged(detail.spelling); await onReload?.(); }
-    }
+      if (e instanceof ClientApiError && (e.code === "exists" || e.code === "missing")) { emitWordChanged(detail.spelling); await onReload?.(); }
+    } finally { setSubmitting(false); }
   }
+  const generateButton = aiGenerate && (
+    <button type="button" className="btn btn-secondary gen-btn" disabled={generating} aria-busy={generating} onClick={generate}>
+      <IconSparkle />{regenerate ? (generating ? "正在重新解析…" : "重新解析") : (generating ? "正在生成…" : "生成 AI 资料")}
+    </button>
+  );
 
   useEffect(() => { setNoteText(detail.note ?? ""); setExpanded(false); setAllHistory(false); setPeek(null); }, [detail.spelling, detail.note]);
   useEffect(() => { setTab(0); setOpen({}); }, [detail.spelling]);
@@ -201,7 +217,7 @@ export default function WordDetail({ detail, settings, onNoteChange, onReload }:
                   {v.core ? <div className="core-def">{v.core}</div> : <div className="ai-pending">暂无释义</div>}</div>
               )}
               {!v.core && !foldKeys.length && <div className="entry-section"><div className="ai-pending">暂无词条资料。</div></div>}
-              {detail.aiGenerate && <div className="entry-section"><div className="ai-pending gen-hint">{generating ? "正在生成这个词的 AI 资料，好了会自动显示…" : "这个词还没有 AI 资料，可以在下面「操作」里生成。"}</div></div>}
+              {!regenerate && aiGenerate && <div className="entry-section"><div className="ai-pending gen-hint">{generating ? "正在生成这个词的 AI 资料，好了会自动显示…" : "这个词还没有 AI 资料，可以在下面「操作」里生成。"}</div></div>}
               {v.meanings.length > 0 && (
                 <Fold open={isOpen("meanings")} onToggle={() => toggle("meanings")} title="释义" ai={v.meaningsSource === "ai"} summary={meaningsSummary(v)}>
                   {v.meanings.map((m, i) => (
@@ -240,7 +256,12 @@ export default function WordDetail({ detail, settings, onNoteChange, onReload }:
                 </Fold>
               )}
               {v.family.length > 0 && <Fold open={isOpen("family")} onToggle={() => toggle("family")} title="词族" summary={summarize(v.family.map((f) => f.w), v.family.length, 4)}>{family(v.family)}</Fold>}
-              {v.provider && <div className="ai-source">词条资料由 {AI_PROVIDER_LABEL[v.provider]} 填充，可在设置里切换来源</div>}
+              {v.provider && <div className="ai-source">
+                <div className="ai-source-row"><span>词条资料由 {AI_PROVIDER_LABEL[v.provider]} 填充，可在设置里切换来源</span>{generateButton}</div>
+                {aiGenerate && <div className="gen-note">{generating
+                  ? "正在重新解析，完成后会自动更新这份资料。"
+                  : `重新解析会更新此来源的共享资料。每人 24 小时内最多生成 ${aiGenerate.limit} 次。`}</div>}
+              </div>}
               <div className="detail-record">
                 {!expanded ? (
                   <>
@@ -272,11 +293,11 @@ export default function WordDetail({ detail, settings, onNoteChange, onReload }:
                 <button className="btn btn-secondary" onClick={() => setNoteOpen(true)}><IconEdit />{detail.note ? "修改备注" : "备注"}</button>
                 <button className="btn btn-secondary" onClick={() => setCollectFor({ spelling: detail.spelling })}><IconBookmark />加入我的词库</button>
                 <button className="btn btn-secondary" onClick={() => { setFbText(""); setFbOpen(true); }}><IconFlag />反馈</button>
-                {detail.aiGenerate && <button className="btn btn-secondary gen-btn" disabled={generating} aria-busy={generating} onClick={generate}><IconSparkle />{generating ? "正在生成…" : "生成 AI 资料"}</button>}
+                {!regenerate && generateButton}
               </div>
-                {detail.aiGenerate && <div className="gen-note">{generating
-                  ? "正在用 DeepSeek 生成这个词的例句、搭配、辨析、助记等，大约半分钟到一分钟，好了会自动显示；可以先去别处，稍后回来看。"
-                  : `这个词还没有 AI 资料。点「生成 AI 资料」用 DeepSeek 生成例句、搭配、辨析、助记等，生成后所有人都能看到；每人 24 小时内最多生成 ${detail.aiGenerate.limit} 次。`}</div>}
+                {!regenerate && aiGenerate && <div className="gen-note">{generating
+                  ? `正在用 ${AI_PROVIDER_LABEL[aiGenerate.provider]} 生成这个词的例句、搭配、辨析、助记等。完成后会自动显示。`
+                  : `这个词还没有 AI 资料。点「生成 AI 资料」用 ${AI_PROVIDER_LABEL[aiGenerate.provider]} 生成例句、搭配、辨析、助记等。生成后所有人都能看到，每人 24 小时内最多生成 ${aiGenerate.limit} 次。`}</div>}
               </div>
             </div>
             <div>

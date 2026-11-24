@@ -2,7 +2,7 @@ import { Prisma, type StudySource } from "@prisma/client";
 import { wordFreq, type WordFreq } from "./dict";
 import { wordCore, wordView, type WordView, type DictPart } from "./word-view";
 import { AI_CARD_SELECT, AI_RUN_SELECT, aiDetailSelect, aiProvidersWithData, aiRowOf, isFullAiRow, pickAi, type AiPreference, type WordAiRelations, AI_PROVIDERS, type AiProvider } from "./ai/providers";
-import { generateAvailable, isGenerating } from "./ai/generate-state";
+import { generateAvailable, generateJobs, initialGenerateProvider } from "./ai/generate-state";
 import { prisma } from "./db";
 import { ApiError } from "./api";
 import { getConfig, getConfigInt } from "./config";
@@ -101,11 +101,8 @@ export type WordDetail = {
   ownProgress: boolean;
   /** 24 小时内看过的词条超过上限（需求 3.2.5）：view 里那四块已去掉，locked 是本词原来有的几块，提示里列出来 */
   limited?: { limit: number; locked: LockedBlocks };
-  /**
-   * 「生成 AI 资料」按钮（需求 3.4 I8）：没有任何厂商的资料、功能又开着（服务器有密钥、每日上限 > 0）才有；
-   * running = 已经有人在生成这个词（页面直接进轮询），limit = 每人 24 小时的上限（写进按钮下面的说明）
-   */
-  aiGenerate?: { running: boolean; limit: number };
+  /** 首次生成或重新解析可用时，返回生成来源、正在运行的任务及每日上限。 */
+  aiGenerate?: { provider: AiProvider; running: boolean; requestId: string | null; limit: number };
 };
 
 /** 洗牌（Fisher-Yates）：详情页的例句每次进入都换个顺序，自动朗读读到的那一条也就跟着变 */
@@ -137,10 +134,10 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     wordCategories(word.id, settings.aiProvider),
   ]);
   const aiAvailable = ai ? aiProvidersWithData(ai) : [];
-  // 一家资料都没有的词才给「生成 AI 资料」按钮（需求 3.4 I8）；功能没开（没密钥 / 上限 0）就不给——这是少数路径，多查一次配置无妨
-  const generateLimit = aiAvailable.length ? 0 : await generateAvailable();
   // 选中哪一家：与 pickAi 一致——auto 取第一家有资料的，指定厂商没资料就退回词典
   const provider = settings.aiProvider === "auto" ? aiAvailable[0] ?? null : aiAvailable.includes(settings.aiProvider) ? settings.aiProvider : null;
+  const generateProvider = provider ?? initialGenerateProvider();
+  const generateLimit = provider || aiAvailable.length === 0 ? await generateAvailable(generateProvider) : 0;
   let row = provider ? aiRowOf(ai!, provider) : null;
   // auto 且首选厂商没有这个词时才会走到（现在是 DeepSeek 优先，只有 OpenAI 独有的词才补这一次查询）
   if (provider && !isFullAiRow(row)) {
@@ -151,6 +148,8 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
   const view = wordView(word, isFullAiRow(row) ? row : null, provider);
   // 例句每次请求随机排序：自动朗读只读第一条，换个顺序就等于换一条例句（需求 3.2.5）
   view.examples = shuffled(view.examples);
+  const job = generateJobs.get(word.spelling);
+  const requestId = job?.provider === generateProvider ? job.requestId : null;
   return {
     id: word.id, spelling: word.spelling, display: word.display ?? null, view,
     aiAvailable,
@@ -161,7 +160,7 @@ export async function buildWordDetail(userId: string, word: DictPart & { id: str
     note: note?.note ?? null,
     history: logs.map((l) => ({ d: fromDate(l.studyDate)!, r: l.result, i: l.nextInterval })),
     bookId: useBookId, bookName: book?.name ?? null, bookIsCurrent: !!useBookId && useBookId === currentId, ownProgress: scope !== GLOBAL_SCOPE,
-    ...(generateLimit > 0 ? { aiGenerate: { running: isGenerating(word.spelling), limit: generateLimit } } : {}),
+    ...(generateLimit > 0 ? { aiGenerate: { provider: generateProvider, running: !!requestId, requestId, limit: generateLimit } } : {}),
   };
 }
 
@@ -328,10 +327,14 @@ export async function rateWordsBatch(userId: string, wordIds: string[], result: 
 /** ---------- 今日队列（3.2.1 / 3.2.3 / 开发计划 6） ---------- */
 
 /** 今日队列里的一项：卡片正面只要音标与例句英文，答案页另取详情 */
-export type QueueItem = { wordId: string; spelling: string; display: string | null; kind: "review" | "new"; phonetic: { us: string; uk: string } | null; examples: string[] };
+export type QueueItem = { wordId: string; spelling: string; display: string | null; kind: "review" | "new"; phonetic: WordView["phonetic"]; phoneticFromAi: boolean; examples: string[] };
 /** 队列只取音标与例句两列（AI_CARD_SELECT），所以这里的 AI 行是窄类型 */
 type AiCardRow = { phoneticUs: string | null; phoneticUk: string | null; examples: Prisma.JsonValue };
-const cardOf = (w: DictPart & WordAiRelations<AiCardRow>, pref: AiPreference) => { const p = pickAi(w, pref); const v = wordView(w, p?.row, p?.provider ?? null); return { phonetic: v.phonetic, examples: v.examples.map((e) => e.en) }; };
+const cardOf = (word: DictPart & WordAiRelations<AiCardRow>, pref: AiPreference) => {
+  const picked = pickAi(word, pref);
+  const view = wordView(word, picked?.row, picked?.provider ?? null);
+  return { phonetic: view.phonetic, phoneticFromAi: view.phoneticFromAi, examples: view.examples.map((e) => e.en) };
+};
 
 function shuffle<T>(arr: T[]): T[] {
   const a = arr.slice();
