@@ -1,0 +1,39 @@
+name: jiaci
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: aiword
+      POSTGRES_USER: aiword
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD_is_required}
+    volumes:
+      # 数据目录相对于 Compose 文件所在目录
+      - ./postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aiword -d aiword"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 384m
+
+  app:
+    image: jiaci:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      # 容器网内地址；密码与宿主 .env 的 POSTGRES_PASSWORD 保持一致
+      DATABASE_URL: postgresql://aiword:${POSTGRES_PASSWORD}@db:5432/aiword?schema=public
+      AUDIO_DIR: /data/audio
+    ports:
+      # 绑定到宿主机回环地址，供反向代理访问
+      - "127.0.0.1:${JIACI_APP_PORT:-3000}:3000"
+    volumes:
+      - ./audio:/data/audio
+    mem_limit: 512m
+
+# 数据通过相对路径 bind mount 落地（./postgres、./audio），不使用命名卷

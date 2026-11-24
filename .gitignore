@@ -49,6 +49,8 @@ next-env.d.ts
 
 # 发音音频文件（AUDIO_DIR 默认位置；可由脚本重新生成）
 /storage/
+/postgres/
+/audio/
 
 # 项目级忽略
 .idea/

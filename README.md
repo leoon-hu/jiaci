@@ -142,6 +142,25 @@ npm run categories:build
 - **列表操作先本地生效、延迟提交**，几秒内可撤销；打分请求幂等，离线时暂存、恢复后重试。
 - 样式是一套 CSS 变量体系（未用 Tailwind），支持浅色 / 深色主题、手机底部 Tab 与桌面顶部导航；基础 PWA，只缓存静态资源；没装成应用时学习首页顶部有一条「安装 AI加词」引导（Android / 电脑 Chrome、Edge 直接调起安装框，iPhone / iPad 给出 Safari 分享 → 添加到主屏幕的步骤，微信里教先在浏览器打开；关掉 3 天后再出现）。
 
+## Docker 自部署
+
+构建需要从构建容器可访问、已完成 Prisma 迁移的 PostgreSQL。先在构建环境中设置 `DATABASE_URL` 和站点对外地址 `SITE_URL`，再构建镜像：
+
+```bash
+docker build --secret id=DATABASE_URL,env=DATABASE_URL --build-arg SITE_URL -t jiaci:latest .
+```
+
+在部署目录按 `.env.example` 配置 `.env`，为 `POSTGRES_PASSWORD` 和 `SESSION_SECRET` 分别生成随机十六进制值。创建 `audio/` 并授予容器中的 `node` 用户（UID 1000）写入权限。启动数据库后执行迁移和初始化：
+
+```bash
+docker compose -f docker-compose.prod.yml up -d db
+docker compose -f docker-compose.prod.yml run --rm app npm run db:migrate
+docker compose -f docker-compose.prod.yml run --rm app npm run db:seed
+docker compose -f docker-compose.prod.yml up -d app
+```
+
+PostgreSQL 和发音文件分别保存在 `postgres/` 和 `audio/`。应用默认在宿主机回环地址的 3000 端口监听，可通过 `JIACI_APP_PORT` 调整，并用 HTTPS 反向代理对外提供服务。词典与词库的初始化方式见 [内容数据](#内容数据)。
+
 ## 数据来源与致谢
 
 - 词典数据来自 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT）。
